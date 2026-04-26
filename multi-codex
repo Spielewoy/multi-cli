@@ -1,0 +1,1268 @@
+#!/usr/bin/env bash
+# =============================================================================
+# multi-codex — Run multiple OpenAI Codex CLI profiles at the same time.
+#
+# HOW IT WORKS:
+#   Codex CLI stores everything (config, auth, sessions, etc.) in a folder
+#   called ~/.codex/ by default. BUT it also checks a special environment
+#   variable called CODEX_HOME. If CODEX_HOME is set, Codex uses THAT folder
+#   instead of ~/.codex/.
+#
+#   So the trick is simple:
+#     1. We create separate folders for each profile (e.g. ~/CodexProfiles/work/)
+#     2. When launching a profile, we set CODEX_HOME to point at that folder
+#     3. Each profile gets its own auth, config, sessions — fully independent
+#
+# SUPPORTED PLATFORMS:
+#   - macOS (Intel + Apple Silicon)
+#   - Linux (any distro)
+#   - Windows users: use multi-codex.ps1 instead (PowerShell version)
+#
+# USAGE:
+#   multi-codex help              — show all commands
+#   multi-codex new work          — create a profile called "work"
+#   multi-codex work              — launch Codex with the "work" profile
+#   multi-codex doctor            — check if everything is set up correctly
+# =============================================================================
+
+# Stop the script immediately if any command fails, if we use an unset
+# variable, or if a pipe command fails.
+set -euo pipefail
+
+# Allow empty globs to expand to nothing (prevents errors when listing dirs).
+shopt -s nullglob
+
+# Version number — update this when releasing new versions.
+VERSION="1.0.0"
+
+# Where all profiles are stored. Users can override this by setting
+# MULTICODEX_HOME in their shell. Defaults to ~/CodexProfiles.
+BASE="${MULTICODEX_HOME:-$HOME/CodexProfiles}"
+
+# Grab the first argument (the command the user typed). If empty, default to "".
+cmd="${1-}"
+
+# =============================================================================
+# HELPER FUNCTIONS
+# Small utility functions used throughout the script.
+# =============================================================================
+
+# Print an error message to stderr and exit immediately.
+abort() {
+  echo "Error: $1" >&2
+  exit 1
+}
+
+# Print a regular info message to stdout.
+print_info() {
+  echo "$1"
+}
+
+# Figure out which platform we're running on (darwin = macOS, linux = Linux).
+# Returns a lowercase string. Aborts if the platform isn't supported.
+# You can force a platform with the MULTICODEX_PLATFORM env var (for testing).
+platform() {
+  local raw
+  raw="${MULTICODEX_PLATFORM-}"
+
+  # If no override was set, ask the system what OS we're on.
+  if [ -z "$raw" ]; then
+    raw="$(uname -s)"
+  fi
+
+  # Normalize to lowercase so we can match case-insensitively.
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+
+  case "$raw" in
+    darwin | macos | mac | osx)
+      printf '%s\n' "darwin"
+      ;;
+    linux)
+      printf '%s\n' "linux"
+      ;;
+    *)
+      abort "unsupported platform '$raw'. Multi-codex supports macOS and Linux. Windows users should use multi-codex.ps1."
+      ;;
+  esac
+}
+
+# =============================================================================
+# PATH HELPER FUNCTIONS
+# Build file paths for profiles, templates, shortcuts, etc.
+# =============================================================================
+
+# Get the full path to a profile's folder.
+# Example: profile_dir "work" → ~/CodexProfiles/work
+profile_dir() {
+  printf '%s/%s\n' "$BASE" "$1"
+}
+
+# Get the path to the templates folder (hidden folder inside the profiles dir).
+templates_dir() {
+  printf '%s/.templates\n' "$BASE"
+}
+
+# Check if a profile is "shared" (has a .shared marker file).
+is_shared_profile() {
+  [ -f "$(profile_dir "$1")/.shared" ]
+}
+
+# Get the path to the system-wide Codex config folder (~/.codex/).
+system_codex_home() {
+  printf '%s/.codex\n' "$HOME"
+}
+
+# macOS: path where we create a clickable .app shortcut.
+# Example: ~/Applications/Multicodex work.app
+mac_shortcut_path() {
+  printf '%s/Applications/Multicodex %s.app\n' "$HOME" "$1"
+}
+
+# Linux: folder where we store launcher shell scripts.
+linux_launcher_dir() {
+  printf '%s/.local/share/multicodex/launchers\n' "$HOME"
+}
+
+# Linux: path to a specific profile's launcher shell script.
+linux_launcher_path() {
+  printf '%s/%s.sh\n' "$(linux_launcher_dir)" "$1"
+}
+
+# Linux: path to a .desktop file (shows up in the app menu).
+linux_desktop_path() {
+  printf '%s/.local/share/applications/multicodex-%s.desktop\n' "$HOME" "$1"
+}
+
+# Check that a profile name is valid.
+# Rules: must start with a letter or number, can only contain letters,
+# numbers, and hyphens. No spaces, underscores, or special characters.
+validate_name() {
+  local name=$1
+
+  if [[ -z "$name" ]]; then
+    abort "profile name required"
+  fi
+
+  if ! [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]]; then
+    abort "profile name must start with alphanumeric and contain only letters, numbers, or hyphens"
+  fi
+}
+
+# =============================================================================
+# FIND CODEX
+# Locate the Codex app or CLI binary on the system.
+# =============================================================================
+
+# Search for Codex in common locations. Users can skip the search entirely
+# by setting MULTICODEX_APP to the path of their Codex binary.
+find_app() {
+  local override candidate
+
+  # If the user manually set MULTICODEX_APP, use that.
+  override="${MULTICODEX_APP-}"
+  if [ -n "$override" ]; then
+    if [ -d "$override" ] || [ -x "$override" ] || command -v "$override" >/dev/null 2>&1; then
+      printf '%s\n' "$override"
+      return 0
+    fi
+  fi
+
+  # Otherwise, search in common install locations based on the platform.
+  case "$(platform)" in
+    darwin)
+      # Check for macOS .app bundle first.
+      for candidate in \
+        "/Applications/Codex.app" \
+        "$HOME/Applications/Codex.app"
+      do
+        if [ -d "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+      # Then check for CLI binary in PATH or common locations.
+      for candidate in "codex" "/usr/local/bin/codex" "$HOME/.local/bin/codex"; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+          command -v "$candidate"
+          return 0
+        fi
+      done
+      ;;
+    linux)
+      # On Linux, Codex is typically a CLI binary installed via npm.
+      for candidate in \
+        "codex" \
+        "/usr/local/bin/codex" \
+        "/usr/bin/codex" \
+        "$HOME/.local/bin/codex"
+      do
+        if command -v "$candidate" >/dev/null 2>&1; then
+          command -v "$candidate"
+          return 0
+        fi
+      done
+      ;;
+  esac
+
+  # Nothing found.
+  return 1
+}
+
+# Like find_app, but aborts with an error if Codex isn't found.
+require_app() {
+  local app
+
+  if ! app="$(find_app)"; then
+    abort "Codex was not found. Install OpenAI Codex (npm i -g @openai/codex) or set MULTICODEX_APP to the app/binary path."
+  fi
+
+  printf '%s\n' "$app"
+}
+
+# =============================================================================
+# PROFILE CREATION
+# Create new profile directories with the right structure.
+# =============================================================================
+
+# Create a "full" profile — just an empty directory. Codex will populate it
+# with config.toml, auth.json, sessions/, etc. on first launch.
+create_profile_layout() {
+  local profile_path=$1
+  mkdir -p "$profile_path"
+}
+
+# Create a "shared" profile — symlinks config, skills, agents, prompts,
+# MCP configs, and plugins from the system ~/.codex/ install.
+# Auth stays isolated (that's the whole point — different accounts).
+create_shared_layout() {
+  local profile_path=$1
+  local sys_home
+
+  sys_home="$(system_codex_home)"
+
+  mkdir -p "$profile_path"
+
+  # Drop a marker file so we know this is a shared profile later.
+  touch "$profile_path/.shared"
+
+  # Symlink config.toml so settings stay in sync with the main install.
+  if [ -f "$sys_home/config.toml" ] && [ ! -e "$profile_path/config.toml" ]; then
+    ln -s "$sys_home/config.toml" "$profile_path/config.toml"
+  fi
+
+  # Symlink the skills folder (custom skills you've written).
+  if [ -d "$sys_home/skills" ] && [ ! -e "$profile_path/skills" ]; then
+    ln -s "$sys_home/skills" "$profile_path/skills"
+  fi
+
+  # Symlink the agents folder.
+  if [ -d "$sys_home/agents" ] && [ ! -e "$profile_path/agents" ]; then
+    ln -s "$sys_home/agents" "$profile_path/agents"
+  fi
+
+  # Symlink the prompts folder.
+  if [ -d "$sys_home/prompts" ] && [ ! -e "$profile_path/prompts" ]; then
+    ln -s "$sys_home/prompts" "$profile_path/prompts"
+  fi
+
+  # Symlink MCP (Model Context Protocol) config files.
+  if [ -d "$sys_home/mcp-configs" ] && [ ! -e "$profile_path/mcp-configs" ]; then
+    ln -s "$sys_home/mcp-configs" "$profile_path/mcp-configs"
+  fi
+
+  # Symlink plugins.
+  if [ -d "$sys_home/plugins" ] && [ ! -e "$profile_path/plugins" ]; then
+    ln -s "$sys_home/plugins" "$profile_path/plugins"
+  fi
+
+  # NOTE: auth.json is NOT symlinked — each profile needs its own login.
+}
+
+# =============================================================================
+# SHORTCUTS
+# Create clickable desktop shortcuts so users can launch profiles easily.
+# =============================================================================
+
+# Figure out the full path to THIS script (multi-codex itself).
+# Tries the global install first, then falls back to the local path.
+script_path() {
+  local installed dir
+
+  installed="$(command -v multi-codex 2>/dev/null || true)"
+  if [ -n "$installed" ]; then
+    printf '%s\n' "$installed"
+    return 0
+  fi
+
+  # Not installed globally — use the path relative to where we were called from.
+  dir="$(cd "$(dirname "$0")" && pwd)"
+  printf '%s/%s\n' "$dir" "$(basename "$0")"
+}
+
+# Escape a string so it's safe to embed in a shell script.
+shell_quote() {
+  printf '%q' "$1"
+}
+
+# Escape a string for use in a .desktop file's Exec= line.
+desktop_quote() {
+  local value=$1
+
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//\$/\\$}
+  value=${value//\`/\\\`}
+  printf '"%s"' "$value"
+}
+
+# macOS: create a clickable .app bundle that launches a specific profile.
+# This shows up in ~/Applications/ and can be pinned to the Dock.
+create_shortcut_darwin() {
+  local profile=$1
+  local app_name="Multicodex $profile"
+  local app_dir
+  local run_script
+  local launcher
+  local icon_src
+
+  app_dir="$(mac_shortcut_path "$profile")"
+  run_script="$app_dir/Contents/MacOS/run"
+  launcher="$(script_path)"
+  icon_src="$(dirname "$launcher")/icon.icns"
+
+  # Build the .app folder structure that macOS expects.
+  mkdir -p "$app_dir/Contents/MacOS"
+  mkdir -p "$app_dir/Contents/Resources"
+
+  # Write a tiny shell script that launches multi-codex with this profile.
+  cat <<EOF > "$run_script"
+#!/usr/bin/env bash
+export MULTICODEX_HOME=$(shell_quote "$BASE")
+exec $(shell_quote "$launcher") $(shell_quote "$profile") "\$@"
+EOF
+
+  chmod +x "$run_script"
+
+  # Copy the app icon if we have one.
+  if [ -f "$icon_src" ]; then
+    cp "$icon_src" "$app_dir/Contents/Resources/icon.icns"
+  fi
+
+  # Write the Info.plist that macOS uses to identify the app.
+  cat <<EOF > "$app_dir/Contents/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>run</string>
+  <key>CFBundleIconFile</key>
+  <string>icon</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.multicodex.profile.$profile</string>
+  <key>CFBundleName</key>
+  <string>$app_name</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+</dict>
+</plist>
+EOF
+
+  print_info "Shortcut created: $app_dir"
+}
+
+# Linux: create a .desktop file and a launcher script for a profile.
+# The .desktop file shows up in the application menu (GNOME, KDE, etc.).
+create_shortcut_linux() {
+  local profile=$1
+  local launcher_root
+  local launcher_path
+  local desktop_path
+  local launcher
+
+  launcher_root="$(linux_launcher_dir)"
+  launcher_path="$(linux_launcher_path "$profile")"
+  desktop_path="$(linux_desktop_path "$profile")"
+  launcher="$(script_path)"
+
+  mkdir -p "$launcher_root"
+  mkdir -p "$(dirname "$desktop_path")"
+
+  # Write a small shell script that launches this profile.
+  cat <<EOF > "$launcher_path"
+#!/usr/bin/env sh
+export MULTICODEX_HOME=$(shell_quote "$BASE")
+exec $(shell_quote "$launcher") $(shell_quote "$profile") "\$@"
+EOF
+
+  chmod +x "$launcher_path"
+
+  # Write the .desktop entry for the app menu.
+  cat <<EOF > "$desktop_path"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Multicodex $profile
+Comment=Launch the $profile Codex profile
+Exec=$(desktop_quote "$launcher_path") %F
+Icon=codex
+Terminal=true
+StartupNotify=false
+Categories=Development;
+EOF
+
+  print_info "Shortcut created: $desktop_path"
+}
+
+# Create a shortcut for the current platform (auto-detects macOS vs Linux).
+create_shortcut() {
+  case "$(platform)" in
+    darwin)
+      create_shortcut_darwin "$1"
+      ;;
+    linux)
+      create_shortcut_linux "$1"
+      ;;
+  esac
+}
+
+# Remove shortcuts for a profile (used when deleting or renaming profiles).
+remove_shortcut() {
+  local profile=$1
+  local target
+
+  case "$(platform)" in
+    darwin)
+      target="$(mac_shortcut_path "$profile")"
+      if [ -d "$target" ]; then
+        rm -rf "$target"
+        print_info "Removed shortcut: $target"
+      fi
+      ;;
+    linux)
+      # Remove the launcher script.
+      target="$(linux_launcher_path "$profile")"
+      if [ -f "$target" ]; then
+        rm -f "$target"
+        print_info "Removed shortcut: $target"
+      fi
+
+      # Remove the .desktop file.
+      target="$(linux_desktop_path "$profile")"
+      if [ -f "$target" ]; then
+        rm -f "$target"
+        print_info "Removed shortcut: $target"
+      fi
+      ;;
+  esac
+}
+
+# =============================================================================
+# SHELL ALIASES
+# Create tiny wrapper scripts so profile names work as terminal commands.
+# =============================================================================
+
+# Path to the directory where shell alias scripts are stored.
+shell_alias_dir() {
+  printf '%s/bin\n' "$BASE"
+}
+
+# Create a wrapper script at $BASE/bin/<profile> that invokes multi-codex.
+create_shell_alias() {
+  local profile=$1
+  local alias_root alias_path launcher
+
+  alias_root="$(shell_alias_dir)"
+  alias_path="$alias_root/$profile"
+  launcher="$(script_path)"
+
+  mkdir -p "$alias_root"
+
+  cat <<EOF > "$alias_path"
+#!/usr/bin/env bash
+exec $(shell_quote "$launcher") $(shell_quote "$profile") "\$@"
+EOF
+
+  chmod +x "$alias_path"
+  print_info "Shell alias created: $alias_path"
+}
+
+# Remove the wrapper script for a profile.
+remove_shell_alias() {
+  local profile=$1
+  local alias_path
+
+  alias_path="$(shell_alias_dir)/$profile"
+  if [ -f "$alias_path" ]; then
+    rm -f "$alias_path"
+    print_info "Removed shell alias: $alias_path"
+  fi
+}
+
+# Check whether $BASE/bin is already in $PATH.
+shell_alias_in_path() {
+  local alias_root
+  alias_root="$(shell_alias_dir)"
+  [[ ":$PATH:" == *":$alias_root:"* ]]
+}
+
+# =============================================================================
+# LAUNCH
+# Start Codex with a specific profile's CODEX_HOME.
+# =============================================================================
+
+# Launch Codex using a specific profile. This is the core feature —
+# it sets CODEX_HOME to the profile's folder so Codex uses that
+# profile's config, auth, and sessions instead of the default ~/.codex/.
+launch_profile() {
+  local profile=$1
+  shift || true
+
+  local profile_path
+  local app
+
+  profile_path="$(profile_dir "$profile")"
+
+  # Make sure the profile exists.
+  if [ ! -d "$profile_path" ]; then
+    abort "profile '$profile' does not exist. Run: multi-codex new $profile"
+  fi
+
+  # Find the Codex app/binary.
+  app="$(require_app)"
+
+  print_info "Launching Codex profile '$profile'"
+
+  case "$(platform)" in
+    darwin)
+      if [[ "$app" == *.app ]]; then
+        # It's a macOS .app bundle — use 'open' to launch it.
+        # Try using --env first (newer macOS), fall back to just setting env.
+        CODEX_HOME="$profile_path" open -n "$app" --env CODEX_HOME="$profile_path" --args "$@" 2>/dev/null \
+          || CODEX_HOME="$profile_path" open -n "$app" --args "$@"
+      else
+        # It's a CLI binary — just run it directly.
+        CODEX_HOME="$profile_path" "$app" "$@"
+      fi
+      ;;
+    linux)
+      # On Linux, Codex is always a CLI binary.
+      CODEX_HOME="$profile_path" "$app" "$@"
+      ;;
+  esac
+}
+
+# =============================================================================
+# PROFILE MANAGEMENT
+# List, create, delete, rename, and clone profiles.
+# =============================================================================
+
+# List all existing profiles. If --raw is passed, output just the names
+# (one per line, no headers) for use in shell completion scripts.
+list_profiles() {
+  local entries=""
+  local dir
+  local raw=${1-}
+
+  if [ "$raw" != "--raw" ]; then
+    echo "Existing profiles:"
+  fi
+
+  # If the profiles folder doesn't exist yet, there's nothing to show.
+  if [ ! -d "$BASE" ]; then
+    if [ "$raw" != "--raw" ]; then
+      echo "(none)"
+    fi
+    return 0
+  fi
+
+  # Loop through all directories in the profiles folder.
+  local n
+  for dir in "$BASE"/*; do
+    [ -d "$dir" ] || continue
+    n="$(basename "$dir")"
+    # Skip the hidden .templates directory.
+    [ "$n" = ".templates" ] && continue
+    entries="${entries}${n}"$'\n'
+  done
+
+  if [ -z "$entries" ]; then
+    if [ "$raw" != "--raw" ]; then
+      echo "(none)"
+    fi
+  else
+    printf '%s' "$entries" | sort
+  fi
+}
+
+# Create a new profile. Supports three modes:
+#   1. Full profile (default) — completely isolated from system config
+#   2. Shared profile (--shared) — shares config/skills, isolates auth only
+#   3. From template (--from <name>) — copies a saved template
+new_profile() {
+  local profile="" shared=false from_tpl=""
+
+  # Parse arguments — profile name and optional flags.
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --shared)       shared=true ;;
+      --from)         from_tpl="${2-}"; shift ;;
+      -*)             abort "unknown option: $1" ;;
+      *)              profile="$1" ;;
+    esac
+    shift
+  done
+
+  validate_name "$profile"
+
+  local profile_path
+  profile_path="$(profile_dir "$profile")"
+
+  # Don't overwrite an existing profile.
+  if [ -d "$profile_path" ]; then
+    abort "profile '$profile' already exists"
+  fi
+
+  # Make sure the base profiles directory exists.
+  mkdir -p "$BASE"
+
+  # Create the profile using the chosen method.
+  if [ -n "$from_tpl" ]; then
+    # From template: copy an existing template.
+    local tpl_path
+    tpl_path="$(templates_dir)/$from_tpl"
+    [ -d "$tpl_path" ] || abort "template '$from_tpl' not found. Run: multi-codex template list"
+    print_info "Creating profile '$profile' from template '$from_tpl'..."
+    cp -R "$tpl_path" "$profile_path"
+  elif [ "$shared" = true ]; then
+    # Shared: symlink config from system install, isolate auth.
+    create_shared_layout "$profile_path"
+  else
+    # Full: completely empty — Codex will create everything on first launch.
+    create_profile_layout "$profile_path"
+  fi
+
+  print_info "Created profile '$profile'"
+
+  # Create a desktop shortcut so users can click to launch.
+  create_shortcut "$profile"
+
+  # Create a shell alias so the profile name works as a terminal command.
+  create_shell_alias "$profile"
+
+  # Hint: remind the user to add $BASE/bin to PATH if it's not there yet.
+  if ! shell_alias_in_path; then
+    echo ""
+    echo "Tip: To use '$profile' as a command, add this to your shell profile:"
+    echo "  export PATH=\"$(shell_alias_dir):\$PATH\""
+  fi
+}
+
+# Delete a profile and all its data. Asks for confirmation first.
+delete_profile() {
+  local profile=$1
+  local profile_path
+  local confirm
+
+  validate_name "$profile"
+
+  profile_path="$(profile_dir "$profile")"
+  if [ ! -d "$profile_path" ]; then
+    abort "profile '$profile' does not exist"
+  fi
+
+  # Safety check — don't delete without the user saying yes.
+  read -r -p "Delete profile '$profile' and all its data? [y/N] " confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    rm -rf "$profile_path"
+    remove_shortcut "$profile"
+    remove_shell_alias "$profile"
+    print_info "Deleted profile '$profile'"
+  else
+    print_info "Aborted."
+  fi
+}
+
+# Rename a profile (moves the folder and recreates the shortcut).
+rename_profile() {
+  local old=$1
+  local new=$2
+  local old_path
+  local new_path
+
+  validate_name "$old"
+  validate_name "$new"
+
+  old_path="$(profile_dir "$old")"
+  new_path="$(profile_dir "$new")"
+
+  if [ ! -d "$old_path" ]; then
+    abort "profile '$old' does not exist"
+  fi
+  if [ -d "$new_path" ]; then
+    abort "profile '$new' already exists"
+  fi
+
+  mv "$old_path" "$new_path"
+  remove_shortcut "$old"
+  remove_shell_alias "$old"
+  create_shortcut "$new"
+  create_shell_alias "$new"
+
+  print_info "Renamed profile '$old' to '$new'"
+}
+
+# Clone a profile — makes a full copy of everything in the profile folder.
+clone_profile() {
+  local src=$1
+  local dest=$2
+  local src_path
+  local dest_path
+
+  validate_name "$src"
+  validate_name "$dest"
+
+  src_path="$(profile_dir "$src")"
+  dest_path="$(profile_dir "$dest")"
+
+  if [ ! -d "$src_path" ]; then
+    abort "source profile '$src' does not exist"
+  fi
+  if [ -d "$dest_path" ]; then
+    abort "destination profile '$dest' already exists"
+  fi
+
+  print_info "Cloning profile '$src' to '$dest'..."
+  cp -R "$src_path" "$dest_path"
+  create_shortcut "$dest"
+  create_shell_alias "$dest"
+
+  print_info "Successfully cloned '$src' to '$dest'"
+}
+
+# =============================================================================
+# TEMPLATES
+# Save/restore profile configurations as reusable templates.
+# Templates strip auth.json so credentials are never accidentally shared.
+# =============================================================================
+
+template_cmd() {
+  local subcmd="${1-}"
+  shift || true
+
+  case "$subcmd" in
+    save)
+      # Save an existing profile as a template.
+      local profile="${1-}" tpl_name="${2-}"
+      validate_name "$profile"
+      validate_name "$tpl_name"
+      local src_path tpl_dir tpl_path
+      src_path="$(profile_dir "$profile")"
+      [ -d "$src_path" ] || abort "profile '$profile' does not exist"
+      tpl_dir="$(templates_dir)"
+      tpl_path="$tpl_dir/$tpl_name"
+      [ -d "$tpl_path" ] && abort "template '$tpl_name' already exists"
+      mkdir -p "$tpl_dir"
+      print_info "Saving '$profile' as template '$tpl_name'..."
+      cp -R "$src_path" "$tpl_path"
+      # Remove the shared marker — templates are always "full".
+      rm -f "$tpl_path/.shared"
+      # Remove auth so templates don't leak credentials.
+      rm -f "$tpl_path/auth.json"
+      print_info "Saved template '$tpl_name'"
+      ;;
+    list)
+      # Show all saved templates.
+      local tpl_dir
+      tpl_dir="$(templates_dir)"
+      echo "Templates:"
+      if [ ! -d "$tpl_dir" ]; then
+        echo "  (none)"
+        return 0
+      fi
+      local any=false
+      for d in "$tpl_dir"/*; do
+        [ -d "$d" ] || continue
+        any=true
+        printf "  %-20s %s\n" "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"
+      done
+      [ "$any" = false ] && echo "  (none)"
+      ;;
+    delete)
+      # Delete a saved template.
+      local tpl_name="${1-}"
+      validate_name "$tpl_name"
+      local tpl_path
+      tpl_path="$(templates_dir)/$tpl_name"
+      [ -d "$tpl_path" ] || abort "template '$tpl_name' does not exist"
+      rm -rf "$tpl_path"
+      print_info "Deleted template '$tpl_name'"
+      ;;
+    *)
+      abort "usage: multi-codex template <save|list|delete>"
+      ;;
+  esac
+}
+
+# =============================================================================
+# EXPORT / IMPORT
+# Back up profiles to .tar.gz archives and restore them.
+# =============================================================================
+
+# Export a profile to a compressed tar.gz archive for backup or transfer.
+export_profile() {
+  local profile="${1-}" out="${2-}"
+  validate_name "$profile"
+
+  local profile_path
+  profile_path="$(profile_dir "$profile")"
+  [ -d "$profile_path" ] || abort "profile '$profile' does not exist"
+
+  # Default output filename is ./<profile>.tar.gz in the current directory.
+  [ -z "$out" ] && out="./${profile}.tar.gz"
+
+  print_info "Exporting '$profile' to $out ..."
+  tar -czf "$out" -C "$BASE" "$profile"
+  print_info "Done."
+}
+
+# Import a profile from a .tar.gz archive.
+import_profile() {
+  local archive="${1-}" profile="${2-}"
+
+  [ -n "$archive" ] || abort "usage: multi-codex import <archive.tar.gz> [name]"
+  [ -f "$archive" ]  || abort "file not found: $archive"
+
+  # If no name was given, try to figure it out from the archive contents.
+  if [ -z "$profile" ]; then
+    profile="$(tar -tzf "$archive" 2>/dev/null | head -1 | cut -d'/' -f1)"
+    [ -n "$profile" ] || abort "cannot infer profile name from archive — pass a name explicitly"
+  fi
+
+  validate_name "$profile"
+
+  local dest
+  dest="$(profile_dir "$profile")"
+  [ -d "$dest" ] && abort "profile '$profile' already exists — choose a different name or delete it first"
+
+  mkdir -p "$BASE"
+  print_info "Importing as '$profile'..."
+
+  # Extract the archive. If the top-level folder inside the archive has a
+  # different name than what the user requested, rename it.
+  local top_dir
+  top_dir="$(tar -tzf "$archive" 2>/dev/null | head -1 | cut -d'/' -f1)"
+  tar -xzf "$archive" -C "$BASE"
+  if [ -n "$top_dir" ] && [ "$top_dir" != "$profile" ] && [ -d "$BASE/$top_dir" ]; then
+    mv "$BASE/$top_dir" "$dest"
+  fi
+
+  create_shortcut "$profile"
+  print_info "Imported profile '$profile'"
+}
+
+# =============================================================================
+# STATUS & DIAGNOSTICS
+# Show profile status, disk usage, and system health checks.
+# =============================================================================
+
+# Show a table of all profiles with their running state, type, last used
+# timestamp, and disk usage.
+status_profiles() {
+  if [ ! -d "$BASE" ]; then
+    print_info "No profiles found."
+    return 0
+  fi
+
+  # Print table header.
+  printf "%-18s %-10s %-12s %-20s %s\n" "PROFILE" "RUNNING" "TYPE" "LAST USED" "SIZE"
+  printf "%-18s %-10s %-12s %-20s %s\n" "-------" "-------" "----" "---------" "----"
+
+  local dir
+  for dir in "$BASE"/*; do
+    [ -d "$dir" ] || continue
+    local name
+    name="$(basename "$dir")"
+    [ "$name" = ".templates" ] && continue
+
+    # Check if this profile is currently running by looking for its
+    # CODEX_HOME in running process arguments.
+    local running="no"
+    if ps -eo args 2>/dev/null | grep -v grep | grep -qF "CODEX_HOME=$dir"; then
+      running="yes"
+    fi
+
+    # Is it a shared or full profile?
+    local ptype="full"
+    [ -f "$dir/.shared" ] && ptype="shared"
+
+    # Get the last modification time (differs between macOS and Linux).
+    local last_used
+    case "$(platform)" in
+      darwin) last_used=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$dir" 2>/dev/null || echo "unknown") ;;
+      linux)  last_used=$(stat -c "%y" "$dir" 2>/dev/null | cut -d'.' -f1 || echo "unknown") ;;
+    esac
+
+    # Get folder size.
+    local size
+    size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
+
+    # Print the row (running profiles get green text).
+    if [ "$running" = "yes" ]; then
+      printf "%-18s \033[32m%-10s\033[0m %-12s %-20s %s\n" "$name" "$running" "$ptype" "$last_used" "$size"
+    else
+      printf "%-18s %-10s %-12s %-20s %s\n" "$name" "$running" "$ptype" "$last_used" "$size"
+    fi
+  done
+}
+
+# Show just the disk usage per profile — simpler than full status.
+profile_stats() {
+  if [ ! -d "$BASE" ]; then
+    print_info "No profiles found."
+    return 0
+  fi
+
+  print_info "Profile Storage Usage:"
+  printf "%-20s %-10s\n" "PROFILE" "SIZE"
+  printf "%-20s %-10s\n" "-------" "----"
+
+  local dir
+  for dir in "$BASE"/*; do
+    [ -d "$dir" ] || continue
+    local name
+    name=$(basename "$dir")
+    [ "$name" = ".templates" ] && continue
+
+    local size
+    size=$(du -sh "$dir" | cut -f1)
+
+    printf "%-20s %-10s\n" "$name" "$size"
+  done
+
+  echo ""
+  local total
+  total=$(du -sh "$BASE" | cut -f1)
+  print_info "Total usage: $total"
+}
+
+# Run a health check on the system — verifies that Codex is installed,
+# PATH is set up, and profiles directory is writable.
+doctor_cli() {
+  local errors=0
+  local warnings=0
+
+  print_info "Checking multi-codex environment..."
+
+  # 1. What platform are we on?
+  if platform &>/dev/null; then
+    echo "  [✓] Platform: $(platform)"
+  else
+    echo "  [✗] Platform: Unknown"
+    errors=$((errors + 1))
+  fi
+
+  # 2. Is Codex installed?
+  if app=$(find_app); then
+    echo "  [✓] Codex: Found at $app"
+  else
+    echo "  [✗] Codex: Not found. Install OpenAI Codex (npm i -g @openai/codex) or set MULTICODEX_APP."
+    errors=$((errors + 1))
+  fi
+
+  # 3. Is multi-codex in the PATH?
+  local installed
+  installed="$(command -v multi-codex 2>/dev/null || true)"
+  if [ -n "$installed" ]; then
+    echo "  [✓] Global Binary: $installed"
+  else
+    echo "  [!] Global Binary: Not found in PATH. Run the install script or add this folder to PATH."
+    warnings=$((warnings + 1))
+  fi
+
+  # 4. Does the system Codex config folder exist?
+  local sys_home
+  sys_home="$(system_codex_home)"
+  if [ -d "$sys_home" ]; then
+    echo "  [✓] System Codex config: $sys_home"
+    if [ -f "$sys_home/auth.json" ]; then
+      echo "  [✓] System auth: configured"
+    else
+      echo "  [!] System auth: not configured (no auth.json)"
+      warnings=$((warnings + 1))
+    fi
+  else
+    echo "  [!] System Codex config: $sys_home (not yet created — run Codex once first)"
+    warnings=$((warnings + 1))
+  fi
+
+  # 5. Is the profile storage directory writable?
+  if [ -d "$BASE" ]; then
+    if [ -w "$BASE" ]; then
+      echo "  [✓] Profile storage: $BASE (writable)"
+    else
+      echo "  [✗] Profile storage: $BASE (NOT writable)"
+      errors=$((errors + 1))
+    fi
+  else
+    echo "  [!] Profile storage: $BASE (not yet created)"
+  fi
+
+  # 6. Is the shell alias bin directory in PATH?
+  if shell_alias_in_path; then
+    echo "  [✓] Shell aliases: $(shell_alias_dir) is in PATH"
+  else
+    echo "  [!] Shell aliases: $(shell_alias_dir) is NOT in PATH. Add it to use profile names as commands."
+    warnings=$((warnings + 1))
+  fi
+
+  echo ""
+  if [ $errors -eq 0 ]; then
+    if [ $warnings -eq 0 ]; then
+      print_info "✓ Your environment looks perfect!"
+    else
+      print_info "Found $warnings warning(s). Multi-codex should still work, but some features might be degraded."
+    fi
+  else
+    print_info "✗ Found $errors error(s) and $warnings warning(s). Please fix the errors above."
+  fi
+}
+
+# =============================================================================
+# UPDATE
+# Download the latest version of this script from GitHub.
+# =============================================================================
+
+update_cli() {
+  local script_url="https://raw.githubusercontent.com/ProGambler67/multi-codex/main/multi-codex"
+  local target
+  target="$(script_path)"
+
+  if [ -z "$target" ]; then
+    abort "could not determine script path for update"
+  fi
+
+  print_info "Updating multi-codex from $script_url ..."
+  if curl -fsSL "$script_url" -o "$target.tmp"; then
+    mv "$target.tmp" "$target"
+    chmod +x "$target"
+    print_info "Successfully updated multi-codex!"
+  else
+    rm -f "$target.tmp"
+    abort "failed to download update"
+  fi
+}
+
+# =============================================================================
+# SHELL COMPLETION
+# Tab-completion support for bash and zsh.
+# =============================================================================
+
+# Show instructions for enabling tab completion in the user's shell.
+help_completion() {
+  local shell_name
+  shell_name="$(basename "$SHELL")"
+
+  echo "To enable autocompletion, add the following to your shell profile:"
+  echo ""
+  case "$shell_name" in
+    zsh)
+      echo "  # Add to ~/.zshrc"
+      echo '  source <(multi-codex completion zsh)'
+      ;;
+    bash)
+      echo "  # Add to ~/.bashrc"
+      echo '  source <(multi-codex completion bash)'
+      ;;
+    *)
+      echo "  # Your shell ($shell_name) is not natively supported for completion."
+      ;;
+  esac
+  echo ""
+  echo "Then restart your terminal or run: source ~/.$shell_name""rc"
+}
+
+# Output the actual completion script for the given shell.
+generate_completion() {
+  local shell_type=$1
+  case "$shell_type" in
+    zsh)
+      cat <<'EOF'
+#compdef multi-codex
+_multi_codex() {
+    local -a commands
+    commands=(
+        'new:Create a new profile'
+        'list:List existing profiles'
+        'status:Show running state, type, and last-used time per profile'
+        'rename:Rename a profile'
+        'delete:Delete a profile'
+        'clone:Clone an existing profile'
+        'template:Manage profile templates (save, list, delete)'
+        'export:Pack a profile into a tar.gz archive'
+        'import:Restore a profile from a tar.gz archive'
+        'update:Update multi-codex'
+        'doctor:Run system diagnosis'
+        'stats:Show profile storage usage'
+        'completion:Setup shell completion'
+        'help:Show help'
+    )
+    local curcontext="$curcontext" state line
+    _arguments -C '1: :->command' '*: :->args'
+    case $state in
+        command)
+            _describe -t commands 'multi-codex command' commands
+            local -a profiles
+            profiles=($(multi-codex list --raw 2>/dev/null))
+            (( ${#profiles} > 0 )) && _describe -t profiles 'profile' profiles
+            ;;
+        args)
+            case $line[1] in
+                rename|delete|clone|export)
+                    local -a profiles
+                    profiles=($(multi-codex list --raw 2>/dev/null))
+                    (( ${#profiles} > 0 )) && _describe -t profiles 'profile' profiles
+                    ;;
+            esac
+            ;;
+    esac
+}
+_multi_codex "$@"
+EOF
+      ;;
+    bash)
+      cat <<'EOF'
+_multi_codex_completions() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="new list status rename delete clone template export import update doctor stats completion help"
+
+    if [[ ${COMP_CWORD} -eq 1 ]] ; then
+        local profiles=$(multi-codex list --raw 2>/dev/null)
+        COMPREPLY=( $(compgen -W "${opts} ${profiles}" -- "${cur}") )
+        return 0
+    fi
+
+    case "${prev}" in
+        delete|rename|clone|export)
+            local profiles=$(multi-codex list --raw 2>/dev/null)
+            COMPREPLY=( $(compgen -W "${profiles}" -- "${cur}") )
+            return 0
+            ;;
+    esac
+}
+complete -F _multi_codex_completions multi-codex
+EOF
+      ;;
+  esac
+}
+
+# =============================================================================
+# HELP / USAGE
+# Show a summary of all available commands.
+# =============================================================================
+
+usage() {
+  cat <<EOF
+Usage: multi-codex <command> [args]
+
+Commands:
+  new <name> [options]        Create a new profile + desktop shortcut
+      --shared                Share config/skills/agents; isolate only accounts
+      --from <template>       Seed from a saved template
+  list                        List existing profiles
+  status                      Show running state, type, and last-used per profile
+  rename <old> <new>          Rename a profile (updates its shortcut)
+  delete <name>               Delete a profile and all its data
+  clone <src> <dest>          Copy an existing profile
+  template save <profile> <name>   Save a profile as a reusable template
+  template list               List saved templates
+  template delete <name>      Delete a template
+  export <name> [path]        Archive a profile to tar.gz
+  import <archive> [name]     Restore a profile from a tar.gz archive
+  update                      Update multi-codex to the latest version
+  doctor                      Run a system diagnosis
+  stats                       Show storage usage per profile
+  completion                  Show setup instructions for shell completion
+  <name> [args...]            Launch Codex with the given profile
+  help                        Show this help
+  version                     Show version number
+
+Profile names: alphanumeric and hyphens only (e.g. work, personal, test-1)
+
+Environment:
+  MULTICODEX_APP      Override the Codex app path or command
+  MULTICODEX_HOME     Override the profile storage directory
+  CODEX_HOME          (used internally) Points Codex at the profile directory
+EOF
+}
+
+# =============================================================================
+# MAIN DISPATCH
+# Route the user's command to the right function.
+# =============================================================================
+
+case "$cmd" in
+  new)
+    shift
+    new_profile "$@"
+    ;;
+  list)
+    list_profiles "${2-}"
+    ;;
+  status)
+    status_profiles
+    ;;
+  rename)
+    rename_profile "${2-}" "${3-}"
+    ;;
+  delete)
+    delete_profile "${2-}"
+    ;;
+  clone)
+    clone_profile "${2-}" "${3-}"
+    ;;
+  template)
+    shift
+    template_cmd "$@"
+    ;;
+  export)
+    export_profile "${2-}" "${3-}"
+    ;;
+  import)
+    import_profile "${2-}" "${3-}"
+    ;;
+  update)
+    update_cli
+    ;;
+  doctor)
+    doctor_cli
+    ;;
+  stats)
+    profile_stats
+    ;;
+  completion)
+    if [ -n "${2-}" ]; then
+      generate_completion "$2"
+    else
+      help_completion
+    fi
+    ;;
+  help | --help | -h)
+    usage
+    ;;
+  version | --version | -v)
+    echo "multi-codex $VERSION"
+    ;;
+  "")
+    usage
+    exit 1
+    ;;
+  *)
+    # If the command doesn't match any built-in, treat it as a profile name.
+    launch_profile "$cmd" "${@:2}"
+    ;;
+esac
