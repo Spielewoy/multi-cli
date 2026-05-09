@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   multi-codex.ps1 - Run multiple OpenAI Codex CLI profiles at the same time (Windows version).
 
@@ -100,6 +100,21 @@ function Test-SharedProfile {
     return Test-Path "$BASE\$name\.shared"
 }
 
+# Check if a profile is a "cli" profile (has a .cli marker file).
+function Test-CliProfile {
+    param($name)
+    return Test-Path "$BASE\$name\.cli"
+}
+
+# Determine whether CLI mode should be forced for a profile.
+# Priority: .cli marker > MULTICODEX_CLI env var > auto-detect.
+function Should-ForceCli {
+    param($name)
+    if (Test-CliProfile $name) { return $true }
+    if ($env:MULTICODEX_CLI -eq "1") { return $true }
+    return $false
+}
+
 # Check that a profile name is valid.
 # Rules: must start with a letter or number, only letters/numbers/hyphens.
 function Validate-Name {
@@ -136,6 +151,7 @@ function Write-Usage {
     Write-Host "Commands:"
     Write-Host "  new <name> [options]        Create a new profile + Start Menu shortcut"
     Write-Host "      --shared                Share config/skills; isolate only accounts"
+    Write-Host "      --cli                   Always launch this profile in terminal (CLI)"
     Write-Host "      --from <template>       Seed from a saved template"
     Write-Host "  list                        List existing profiles"
     Write-Host "  status                      Show running state, type, and last-used per profile"
@@ -160,6 +176,7 @@ function Write-Usage {
     Write-Host "Environment:"
     Write-Host "  MULTICODEX_APP      Override the Codex binary path"
     Write-Host "  MULTICODEX_HOME     Override the profile storage directory"
+    Write-Host "  MULTICODEX_CLI=1    Force terminal CLI launch for all profiles"
     Write-Host "  CODEX_HOME          (used internally) Points Codex at the profile directory"
 }
 
@@ -309,6 +326,7 @@ function Test-ShellAliasInPath {
 
 # Launch Codex using a specific profile. Sets CODEX_HOME to the profile's
 # folder so Codex uses that profile's config/auth/sessions.
+# Respects the .cli marker and MULTICODEX_CLI env var for terminal-only launch.
 function Invoke-LaunchProfile {
     param($ProfileName, $ArgsToForward)
     $profileDir = "$BASE\$ProfileName"
@@ -325,7 +343,13 @@ function Invoke-LaunchProfile {
         exit 1
     }
 
-    Write-Host "Launching Codex profile '$ProfileName'"
+    # Determine CLI mode for this profile.
+    $modeLabel = ""
+    if (Should-ForceCli $ProfileName) {
+        $modeLabel = " (CLI)"
+    }
+
+    Write-Host "Launching Codex profile '$ProfileName'$modeLabel"
 
     # Set CODEX_HOME so Codex uses this profile's directory.
     $env:CODEX_HOME = $profileDir
@@ -362,18 +386,20 @@ function Invoke-ListProfiles {
     }
 }
 
-# Create a new profile. Supports: full (default), shared, or from template.
+# Create a new profile. Supports: full (default), shared, CLI, or from template.
 function Invoke-NewProfile {
     param($name, [string[]]$extraArgs)
 
     $shared  = $false
+    $cli     = $false
     $fromTpl = ""
 
-    # Parse extra arguments (--shared, --from <template>).
+    # Parse extra arguments (--shared, --cli, --from <template>).
     $i = 0
     while ($i -lt $extraArgs.Count) {
         switch ($extraArgs[$i]) {
             "--shared" { $shared = $true }
+            "--cli"    { $cli = $true }
             "--from"   { $i++; if ($i -lt $extraArgs.Count) { $fromTpl = $extraArgs[$i] } }
         }
         $i++
@@ -413,6 +439,11 @@ function Invoke-NewProfile {
     } else {
         # Full (isolated) profile.
         Invoke-CreateProfile $name
+    }
+
+    # Drop a .cli marker if requested (forces terminal CLI launch for this profile).
+    if ($cli) {
+        New-Item -ItemType File -Force -Path "$profileDir\.cli" | Out-Null
     }
 
     Write-Host "Created profile '$name'"
@@ -532,9 +563,11 @@ function Invoke-TemplateCmd {
             New-Item -ItemType Directory -Force -Path $tplDir | Out-Null
             Write-Host "Saving '$a' as template '$b'..."
             Copy-Item -Path $srcDir -Destination $tplPath -Recurse
-            # Remove shared marker and auth (templates are always clean).
+            # Remove markers and auth (templates are always clean).
             $marker = "$tplPath\.shared"
             if (Test-Path $marker) { Remove-Item $marker -Force }
+            $cliMarker = "$tplPath\.cli"
+            if (Test-Path $cliMarker) { Remove-Item $cliMarker -Force }
             $auth = "$tplPath\auth.json"
             if (Test-Path $auth) { Remove-Item $auth -Force }
             Write-Host "Saved template '$b'"
@@ -659,8 +692,10 @@ function Invoke-StatusProfiles {
             }
         }
 
-        # Is it a shared or full profile?
-        $ptype    = if (Test-Path "$($d.FullName)\.shared") { "shared" } else { "full" }
+        # Determine profile type: CLI > shared > full.
+        $ptype = if (Test-Path "$($d.FullName)\.cli") { "cli" }
+                 elseif (Test-Path "$($d.FullName)\.shared") { "shared" }
+                 else { "full" }
         $lastUsed = $d.LastWriteTime.ToString("yyyy-MM-dd HH:mm")
         $size     = Get-FolderSize $d.FullName
 
@@ -756,7 +791,7 @@ function Invoke-DoctorCli {
         Write-Host "  [WARN] Profile storage: $BASE (not yet created)"
     }
 
-    # 6b. Is the shell alias bin directory in PATH?
+    # 6. Is the shell alias bin directory in PATH?
     if (Test-ShellAliasInPath) {
         Write-Host "  [OK] Shell aliases: $(Get-ShellAliasDir) is in PATH"
     } else {
@@ -764,7 +799,7 @@ function Invoke-DoctorCli {
         $warnings++
     }
 
-    # 6. Node.js check (required for Codex CLI).
+    # 7. Node.js check (required for Codex CLI).
     $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
     if ($nodeCmd) {
         $nodeVer = & node --version 2>$null
@@ -772,6 +807,13 @@ function Invoke-DoctorCli {
     } else {
         Write-Host "  [WARN] Node.js: Not found in PATH. Codex CLI requires Node.js 22+."
         $warnings++
+    }
+
+    # 8. CLI mode configuration.
+    if ($env:MULTICODEX_CLI -eq "1") {
+        Write-Host "  [INFO] CLI mode: MULTICODEX_CLI=1 (global override — all profiles launch in terminal)"
+    } else {
+        Write-Host "  [INFO] CLI mode: auto-detect (set MULTICODEX_CLI=1 to force terminal launch for all profiles)"
     }
 
     Write-Host ""
@@ -836,7 +878,7 @@ function Invoke-GenerateCompletion {
         @"
 Register-ArgumentCompleter -Native -CommandName multi-codex -ScriptBlock {
     param(`$wordToComplete, `$commandAst, `$cursorPosition)
-    `$opts = @('new', 'list', 'status', 'rename', 'delete', 'clone', 'template', 'export', 'import', 'update', 'doctor', 'stats', 'completion', 'help')
+    `$opts = @('new', 'list', 'status', 'rename', 'delete', 'clone', 'template', 'export', 'import', 'update', 'doctor', 'stats', 'completion', 'help', '--shared', '--cli', '--from')
     `$profiles = if (Test-Path '$BASE') { Get-ChildItem -Directory -Path '$BASE' | Where-Object { `$_.Name -ne '.templates' } | Select-Object -ExpandProperty Name } else { @() }
     (`$opts + `$profiles) | Where-Object { `$_ -like "`$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new(`$_, `$_, 'ParameterValue', `$_)

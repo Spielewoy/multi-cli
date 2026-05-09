@@ -107,6 +107,20 @@ is_shared_profile() {
   [ -f "$(profile_dir "$1")/.shared" ]
 }
 
+# Check if a profile is "cli" (has a .cli marker file).
+is_cli_profile() {
+  [ -f "$(profile_dir "$1")/.cli" ]
+}
+
+# Determine whether CLI mode should be forced for a profile.
+# Priority: .cli marker > MULTICODEX_CLI env var > auto-detect.
+should_force_cli() {
+  local profile=$1
+  [ -f "$(profile_dir "$profile")/.cli" ] && return 0
+  [ "${MULTICODEX_CLI-}" = "1" ] && return 0
+  return 1
+}
+
 # Get the path to the system-wide Codex config folder (~/.codex/).
 system_codex_home() {
   printf '%s/.codex\n' "$HOME"
@@ -155,8 +169,15 @@ validate_name() {
 
 # Search for Codex in common locations. Users can skip the search entirely
 # by setting MULTICODEX_APP to the path of their Codex binary.
+# Pass --cli to skip .app bundle searches and force CLI binary discovery.
 find_app() {
-  local override candidate
+  local override candidate cli_only=false
+
+  # Parse optional --cli flag to force CLI binary (skip .app bundles).
+  if [ "${1-}" = "--cli" ]; then
+    cli_only=true
+    shift
+  fi
 
   # If the user manually set MULTICODEX_APP, use that.
   override="${MULTICODEX_APP-}"
@@ -170,16 +191,18 @@ find_app() {
   # Otherwise, search in common install locations based on the platform.
   case "$(platform)" in
     darwin)
-      # Check for macOS .app bundle first.
-      for candidate in \
-        "/Applications/Codex.app" \
-        "$HOME/Applications/Codex.app"
-      do
-        if [ -d "$candidate" ]; then
-          printf '%s\n' "$candidate"
-          return 0
-        fi
-      done
+      # Check for macOS .app bundle (skip if CLI-only mode).
+      if [ "$cli_only" = false ]; then
+        for candidate in \
+          "/Applications/Codex.app" \
+          "$HOME/Applications/Codex.app"
+        do
+          if [ -d "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+          fi
+        done
+      fi
       # Then check for CLI binary in PATH or common locations.
       for candidate in "codex" "/usr/local/bin/codex" "$HOME/.local/bin/codex"; do
         if command -v "$candidate" >/dev/null 2>&1; then
@@ -209,10 +232,11 @@ find_app() {
 }
 
 # Like find_app, but aborts with an error if Codex isn't found.
+# Forwards all arguments to find_app (e.g. --cli).
 require_app() {
   local app
 
-  if ! app="$(find_app)"; then
+  if ! app="$(find_app "$@")"; then
     abort "Codex was not found. Install OpenAI Codex (npm i -g @openai/codex) or set MULTICODEX_APP to the app/binary path."
   fi
 
@@ -515,12 +539,14 @@ shell_alias_in_path() {
 # Launch Codex using a specific profile. This is the core feature —
 # it sets CODEX_HOME to the profile's folder so Codex uses that
 # profile's config, auth, and sessions instead of the default ~/.codex/.
+# Respects the .cli marker and MULTICODEX_CLI env var for terminal-only launch.
 launch_profile() {
   local profile=$1
   shift || true
 
   local profile_path
   local app
+  local force_cli=false
 
   profile_path="$(profile_dir "$profile")"
 
@@ -529,14 +555,23 @@ launch_profile() {
     abort "profile '$profile' does not exist. Run: multi-codex new $profile"
   fi
 
-  # Find the Codex app/binary.
-  app="$(require_app)"
+  # Determine if CLI mode should be forced for this profile.
+  if should_force_cli "$profile"; then
+    force_cli=true
+    app="$(require_app --cli)"
+  else
+    app="$(require_app)"
+  fi
 
-  print_info "Launching Codex profile '$profile'"
+  if [ "$force_cli" = true ]; then
+    print_info "Launching Codex profile '$profile' (CLI)"
+  else
+    print_info "Launching Codex profile '$profile'"
+  fi
 
   case "$(platform)" in
     darwin)
-      if [[ "$app" == *.app ]]; then
+      if [ "$force_cli" = false ] && [[ "$app" == *.app ]]; then
         # It's a macOS .app bundle — use 'open' to launch it.
         # Try using --env first (newer macOS), fall back to just setting env.
         CODEX_HOME="$profile_path" open -n "$app" --env CODEX_HOME="$profile_path" --args "$@" 2>/dev/null \
@@ -596,17 +631,19 @@ list_profiles() {
   fi
 }
 
-# Create a new profile. Supports three modes:
+# Create a new profile. Supports multiple modes:
 #   1. Full profile (default) — completely isolated from system config
 #   2. Shared profile (--shared) — shares config/skills, isolates auth only
-#   3. From template (--from <name>) — copies a saved template
+#   3. CLI profile (--cli) — always launches in terminal CLI mode
+#   4. From template (--from <name>) — copies a saved template
 new_profile() {
-  local profile="" shared=false from_tpl=""
+  local profile="" shared=false from_tpl="" cli=false
 
   # Parse arguments — profile name and optional flags.
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --shared)       shared=true ;;
+      --cli)          cli=true ;;
       --from)         from_tpl="${2-}"; shift ;;
       -*)             abort "unknown option: $1" ;;
       *)              profile="$1" ;;
@@ -641,6 +678,11 @@ new_profile() {
   else
     # Full: completely empty — Codex will create everything on first launch.
     create_profile_layout "$profile_path"
+  fi
+
+  # Drop a .cli marker if requested (forces terminal CLI launch for this profile).
+  if [ "$cli" = true ]; then
+    touch "$profile_path/.cli"
   fi
 
   print_info "Created profile '$profile'"
@@ -766,8 +808,9 @@ template_cmd() {
       mkdir -p "$tpl_dir"
       print_info "Saving '$profile' as template '$tpl_name'..."
       cp -R "$src_path" "$tpl_path"
-      # Remove the shared marker — templates are always "full".
+      # Remove markers — templates are always "full".
       rm -f "$tpl_path/.shared"
+      rm -f "$tpl_path/.cli"
       # Remove auth so templates don't leak credentials.
       rm -f "$tpl_path/auth.json"
       print_info "Saved template '$tpl_name'"
@@ -893,9 +936,13 @@ status_profiles() {
       running="yes"
     fi
 
-    # Is it a shared or full profile?
+    # Determine profile type: CLI > shared > full.
     local ptype="full"
-    [ -f "$dir/.shared" ] && ptype="shared"
+    if [ -f "$dir/.cli" ]; then
+      ptype="cli"
+    elif [ -f "$dir/.shared" ]; then
+      ptype="shared"
+    fi
 
     # Get the last modification time (differs between macOS and Linux).
     local last_used
@@ -1017,6 +1064,13 @@ doctor_cli() {
     warnings=$((warnings + 1))
   fi
 
+  # 7. CLI mode configuration.
+  if [ "${MULTICODEX_CLI-}" = "1" ]; then
+    echo "  [i] CLI mode: MULTICODEX_CLI=1 (global override — all profiles launch in terminal)"
+  else
+    echo "  [i] CLI mode: auto-detect (set MULTICODEX_CLI=1 to force terminal launch for all profiles)"
+  fi
+
   echo ""
   if [ $errors -eq 0 ]; then
     if [ $warnings -eq 0 ]; then
@@ -1119,6 +1173,12 @@ _multi_codex() {
             ;;
         args)
             case $line[1] in
+                new)
+                    _describe -t 'new options' option \
+                        '--shared:Share config/skills' \
+                        '--cli:Force terminal CLI launch' \
+                        '--from:Seed from a saved template'
+                    ;;
                 rename|delete|clone|export)
                     local -a profiles
                     profiles=($(multi-codex list --raw 2>/dev/null))
@@ -1147,6 +1207,10 @@ _multi_codex_completions() {
     fi
 
     case "${prev}" in
+        new)
+            COMPREPLY=( $(compgen -W "--shared --cli --from" -- "${cur}") )
+            return 0
+            ;;
         delete|rename|clone|export)
             local profiles=$(multi-codex list --raw 2>/dev/null)
             COMPREPLY=( $(compgen -W "${profiles}" -- "${cur}") )
@@ -1172,6 +1236,7 @@ Usage: multi-codex <command> [args]
 Commands:
   new <name> [options]        Create a new profile + desktop shortcut
       --shared                Share config/skills/agents; isolate only accounts
+      --cli                   Always launch this profile in terminal (CLI)
       --from <template>       Seed from a saved template
   list                        List existing profiles
   status                      Show running state, type, and last-used per profile
@@ -1196,6 +1261,7 @@ Profile names: alphanumeric and hyphens only (e.g. work, personal, test-1)
 Environment:
   MULTICODEX_APP      Override the Codex app path or command
   MULTICODEX_HOME     Override the profile storage directory
+  MULTICODEX_CLI=1    Force terminal CLI launch for all profiles (skip .app)
   CODEX_HOME          (used internally) Points Codex at the profile directory
 EOF
 }
