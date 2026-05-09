@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-  multi-codex.ps1 — Run multiple OpenAI Codex CLI profiles at the same time (Windows version).
+  multi-codex.ps1 - Run multiple OpenAI Codex CLI profiles at the same time (Windows version).
 
 .DESCRIPTION
   This is the Windows PowerShell version of multi-codex. It does the same thing
@@ -14,13 +14,13 @@
     So the trick is:
       1. We create separate folders for each profile (e.g. %USERPROFILE%\CodexProfiles\work\)
       2. When launching a profile, we set CODEX_HOME to that folder
-      3. Each profile gets its own auth, config, sessions — fully independent
+      3. Each profile gets its own auth, config, sessions - fully independent
 
   USAGE:
-    multi-codex help              — show all commands
-    multi-codex new work          — create a profile called "work"
-    multi-codex work              — launch Codex with the "work" profile
-    multi-codex doctor            — check if everything is set up correctly
+    multi-codex help              - show all commands
+    multi-codex new work          - create a profile called "work"
+    multi-codex work              - launch Codex with the "work" profile
+    multi-codex doctor            - check if everything is set up correctly
 #>
 
 param (
@@ -167,7 +167,7 @@ function Write-Usage {
 # PROFILE CREATION
 # =============================================================================
 
-# Create a "full" profile — an empty directory structure.
+# Create a "full" profile - an empty directory structure.
 # Codex will populate it with config, auth, sessions on first launch.
 function Invoke-CreateProfile {
     param($ProfileName)
@@ -175,9 +175,9 @@ function Invoke-CreateProfile {
     New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 }
 
-# Create a "shared" profile — symlinks config, skills, agents, prompts,
+# Create a "shared" profile - symlinks config, skills, agents, prompts,
 # MCP configs, and plugins from the system ~/.codex/ install.
-# Auth stays isolated (different accounts per profile — that's the point).
+# Auth stays isolated (different accounts per profile - that's the point).
 function Invoke-CreateSharedProfile {
     param($name)
     $profileDir = "$BASE\$name"
@@ -202,7 +202,7 @@ function Invoke-CreateSharedProfile {
         }
     }
 
-    # NOTE: auth.json is NOT symlinked — each profile needs its own login.
+    # NOTE: auth.json is NOT symlinked - each profile needs its own login.
 }
 
 # =============================================================================
@@ -439,7 +439,7 @@ function Invoke-DeleteProfile {
         exit 1
     }
 
-    # Safety check — ask before deleting.
+    # Safety check - ask before deleting.
     $confirm = Read-Host "Delete profile '$ProfileName' and all its data? [y/N]"
     if ($confirm -match "^[Yy]$") {
         try {
@@ -484,7 +484,7 @@ function Invoke-RenameProfile {
     Write-Host "Renamed profile '$OLD' to '$NEW'"
 }
 
-# Clone a profile — makes a full copy.
+# Clone a profile - makes a full copy.
 function Invoke-CloneProfile {
     param($SRC, $DEST)
     Validate-Name $SRC
@@ -607,7 +607,7 @@ function Invoke-ImportProfile {
 
     $dest = "$BASE\$name"
     if (Test-Path $dest) {
-        Write-Error "Error: profile '$name' already exists — choose a different name or delete it first"
+        Write-Error "Error: profile '$name' already exists - choose a different name or delete it first"
         exit 1
     }
 
@@ -697,7 +697,7 @@ function Invoke-ProfileStats {
     Write-Host "Total usage: $total"
 }
 
-# Run a health check — verifies Codex is installed, PATH is set up, etc.
+# Run a health check - verifies Codex is installed, PATH is set up, etc.
 function Invoke-DoctorCli {
     $errors = 0
     $warnings = 0
