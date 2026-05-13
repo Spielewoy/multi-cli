@@ -9,7 +9,7 @@
 #      without confirmation)
 #
 # Usage:
-#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.sh)"
+#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh)"
 #
 # Or just run it directly:
 #   bash uninstall.sh

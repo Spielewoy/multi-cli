@@ -38,12 +38,12 @@ flowchart LR
 
    **macOS / Linux:**
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.sh)"
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh)"
    ```
 
    **Windows (PowerShell as Admin):**
    ```powershell
-   irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.ps1 | iex
+   irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
    ```
 
    Or manually: download `multi-codex` / `multi-codex.ps1`, drop it somewhere in your `PATH`, and `chmod +x` it.
@@ -71,7 +71,7 @@ export PATH="$HOME/CodexProfiles/bin:$PATH"
 | Flag | Behaviour |
 |---|---|
 | *(default)* | **Full profile** — completely isolated. Own auth, config, sessions, skills. |
-| `--shared` | **Shared** — symlinks config, skills, agents from `~/.codex/`. Only auth is separate. |
+| `--shared` | **Shared** — symlinks config, skills, agents, prompts, plugins, schemas, hooks, git-hooks, scripts, manifests, memories & vendor_imports from `~/.codex/`. Only auth is separate. |
 | `--cli` | **Terminal-only** — skips the desktop app, always opens in your terminal. |
 
 ```bash
@@ -116,12 +116,12 @@ Force CLI globally: `export MULTICODEX_CLI=1`
 
 **macOS / Linux:**
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh)"
 ```
 
 **Windows:**
 ```powershell
-irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
 ```
 
 ---
@@ -139,12 +139,12 @@ irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.ps
 
    **macOS / Linux：**
    ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.sh)"
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh)"
    ```
 
    **Windows（管理员 PowerShell）：**
    ```powershell
-   irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.ps1 | iex
+   irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
    ```
 
    或手动下载 `multi-codex` / `multi-codex.ps1`，放到 `PATH` 里，给执行权限。
@@ -217,12 +217,12 @@ multi-codex new work --cli        # 纯终端模式
 
 **macOS / Linux：**
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh)"
 ```
 
 **Windows：**
 ```powershell
-irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
 ```
 
 ---

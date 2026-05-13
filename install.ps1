@@ -8,12 +8,12 @@
 #   4. Adds the install directory to the user's PATH if needed
 #
 # Usage (run in PowerShell):
-#   irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
 
-$REPO = "ProGambler67/multi-codex"
+$REPO = "Spielewoy/multi-codex"
 $BRANCH = "main"
 $RAW = "https://raw.githubusercontent.com/$REPO/$BRANCH"
 

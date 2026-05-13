@@ -33,7 +33,7 @@ set -euo pipefail
 shopt -s nullglob
 
 # Version number — update this when releasing new versions.
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Where all profiles are stored. Users can override this by setting
 # MULTICODEX_HOME in their shell. Defaults to ~/CodexProfiles.
@@ -297,6 +297,41 @@ create_shared_layout() {
   # Symlink plugins.
   if [ -d "$sys_home/plugins" ] && [ ! -e "$profile_path/plugins" ]; then
     ln -s "$sys_home/plugins" "$profile_path/plugins"
+  fi
+
+  # Symlink schemas (JSON schemas for Codex config validation).
+  if [ -d "$sys_home/schemas" ] && [ ! -e "$profile_path/schemas" ]; then
+    ln -s "$sys_home/schemas" "$profile_path/schemas"
+  fi
+
+  # Symlink hooks (shared lifecycle hooks).
+  if [ -d "$sys_home/hooks" ] && [ ! -e "$profile_path/hooks" ]; then
+    ln -s "$sys_home/hooks" "$profile_path/hooks"
+  fi
+
+  # Symlink git-hooks (shared git commit/push hooks).
+  if [ -d "$sys_home/git-hooks" ] && [ ! -e "$profile_path/git-hooks" ]; then
+    ln -s "$sys_home/git-hooks" "$profile_path/git-hooks"
+  fi
+
+  # Symlink scripts (shared utility scripts).
+  if [ -d "$sys_home/scripts" ] && [ ! -e "$profile_path/scripts" ]; then
+    ln -s "$sys_home/scripts" "$profile_path/scripts"
+  fi
+
+  # Symlink manifests (Codex installation manifests).
+  if [ -d "$sys_home/manifests" ] && [ ! -e "$profile_path/manifests" ]; then
+    ln -s "$sys_home/manifests" "$profile_path/manifests"
+  fi
+
+  # Symlink memories (shared AI memories).
+  if [ -d "$sys_home/memories" ] && [ ! -e "$profile_path/memories" ]; then
+    ln -s "$sys_home/memories" "$profile_path/memories"
+  fi
+
+  # Symlink vendor_imports (curated skills cache etc.).
+  if [ -d "$sys_home/vendor_imports" ] && [ ! -e "$profile_path/vendor_imports" ]; then
+    ln -s "$sys_home/vendor_imports" "$profile_path/vendor_imports"
   fi
 
   # NOTE: auth.json is NOT symlinked — each profile needs its own login.
@@ -1056,7 +1091,17 @@ doctor_cli() {
     echo "  [!] Profile storage: $BASE (not yet created)"
   fi
 
-  # 6. Is the shell alias bin directory in PATH?
+  # 6. Is Node.js installed? (required by Codex CLI)
+  if command -v node &>/dev/null; then
+    local node_ver
+    node_ver="$(node --version 2>/dev/null || echo 'unknown')"
+    echo "  [✓] Node.js: $node_ver"
+  else
+    echo "  [!] Node.js: Not found in PATH. Codex CLI requires Node.js 22+."
+    warnings=$((warnings + 1))
+  fi
+
+  # 7. Is the shell alias bin directory in PATH?
   if shell_alias_in_path; then
     echo "  [✓] Shell aliases: $(shell_alias_dir) is in PATH"
   else
@@ -1064,7 +1109,7 @@ doctor_cli() {
     warnings=$((warnings + 1))
   fi
 
-  # 7. CLI mode configuration.
+  # 8. CLI mode configuration.
   if [ "${MULTICODEX_CLI-}" = "1" ]; then
     echo "  [i] CLI mode: MULTICODEX_CLI=1 (global override — all profiles launch in terminal)"
   else
@@ -1089,7 +1134,7 @@ doctor_cli() {
 # =============================================================================
 
 update_cli() {
-  local script_url="https://raw.githubusercontent.com/ProGambler67/multi-codex/main/multi-codex"
+  local script_url="https://raw.githubusercontent.com/Spielewoy/multi-codex/main/multi-codex"
   local target
   target="$(script_path)"
 

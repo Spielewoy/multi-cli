@@ -43,7 +43,7 @@ param (
 # Default: %USERPROFILE%\CodexProfiles (e.g. C:\Users\Max\CodexProfiles)
 # =============================================================================
 
-$VERSION = "1.0.0"
+$VERSION = "1.1.0"
 
 $BASE = if ($env:MULTICODEX_HOME) { $env:MULTICODEX_HOME } else { "$env:USERPROFILE\CodexProfiles" }
 
@@ -210,8 +210,11 @@ function Invoke-CreateSharedProfile {
         New-Item -ItemType SymbolicLink -Path "$profileDir\config.toml" -Target "$sysHome\config.toml" -ErrorAction SilentlyContinue | Out-Null
     }
 
-    # Symlink shared folders: skills, agents, prompts, mcp-configs, plugins.
-    foreach ($folder in @("skills", "agents", "prompts", "mcp-configs", "plugins")) {
+    # Symlink shared folders: skills, agents, prompts, mcp-configs, plugins,
+    # schemas, hooks, git-hooks, scripts, manifests, memories, vendor_imports.
+    foreach ($folder in @("skills", "agents", "prompts", "mcp-configs", "plugins",
+                          "schemas", "hooks", "git-hooks", "scripts", "manifests",
+                          "memories", "vendor_imports")) {
         $src  = "$sysHome\$folder"
         $dest = "$profileDir\$folder"
         if ((Test-Path $src) -and !(Test-Path $dest)) {
@@ -834,7 +837,7 @@ function Invoke-DoctorCli {
 # =============================================================================
 
 function Invoke-UpdateCli {
-    $script_url = "https://raw.githubusercontent.com/ProGambler67/multi-codex/main/multi-codex.ps1"
+    $script_url = "https://raw.githubusercontent.com/Spielewoy/multi-codex/main/multi-codex.ps1"
     $target = $MyInvocation.ScriptName
     if ([string]::IsNullOrEmpty($target)) {
         $cmdObj = Get-Command multi-codex -ErrorAction SilentlyContinue

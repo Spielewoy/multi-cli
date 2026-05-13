@@ -8,7 +8,7 @@
 #   4. Optionally removes all profile data (asks first)
 #
 # Usage (run in PowerShell):
-#   irm https://raw.githubusercontent.com/ProGambler67/multi-codex/main/uninstall.ps1 | iex
+#   irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
 # =============================================================================
 
 $ErrorActionPreference = "Stop"

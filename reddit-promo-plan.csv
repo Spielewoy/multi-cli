@@ -1,0 +1,137 @@
+Priority,Subreddit,Title,Post Body,Notes
+1,r/codex,run multiple codex accounts at the same time,"so i have a work and personal openai account and switching between them in codex was annoying as hell. every time i wanted to use the other one id have to log out and back in because everything lives in one folder.
+
+so i made multi-codex. you create profiles and each one gets its own sandboxed environment, own login, own config, own sessions, own skills, own agents. completely isolated from each other. you can run them all at the same time.
+
+setup is dead simple:
+
+multi-codex new work
+multi-codex new personal
+
+then you just type work or personal in your terminal and it launches codex with that profile. both can be open at the same time doing different things.
+
+it also does shared profiles if you want to keep your config and skills synced but just have a separate login. and you can clone profiles, save templates, export/import them between machines, etc.
+
+works on mac, linux, and windows. its just a bash script so theres nothing to install really.
+
+https://github.com/Spielewoy/multi-codex
+
+lmk if you run into anything or want a feature added","home base. answer every single comment. be active here."
+2,r/ChatGPTCoding,run multiple codex instances side by side,"if you use codex cli with more than one openai account you already know how annoying it is. you can only be logged into one at a time because it all lives in ~/.codex/
+
+i made a tool that creates sandboxed profiles so each one has its own auth, config, sessions, skills and agents. fully isolated. you just type the profile name and it launches.
+
+multi-codex new work
+work
+
+thats it. now your work codex is running. open another terminal, type personal, now thats running too. no conflicts.
+
+also supports shared profiles where config and skills stay synced but auth is separate. plus templates, cloning, export/import for moving profiles between machines.
+
+https://github.com/Spielewoy/multi-codex","big sub. keep it practical and short."
+3,r/VibeCoding,stop logging in and out of codex between projects,"if you vibe code across different projects with different openai accounts this is for you. made a tool that lets you create named codex profiles that are fully sandboxed. each profile has its own login, config, sessions, skills, agents, everything.
+
+you just type the profile name in your terminal and codex launches with that setup. both can run at the same time.
+
+multi-codex new work
+multi-codex new personal
+work
+personal
+
+now you have two fully independent codex instances running. takes like 30 seconds to set up.
+
+https://github.com/Spielewoy/multi-codex","casual tone. these people get it."
+4,r/openai,made a tool to run multiple codex cli profiles at once,"codex cli stores everything in one folder so you can only use one account at a time. if you have multiple openai accounts for different projects or clients thats a problem.
+
+multi-codex creates sandboxed profiles where each one gets its own auth, config, sessions, skills, and agents. you just type the profile name and it launches. multiple profiles can run simultaneously.
+
+also has shared profiles (synced config but separate login), templates, cloning, and export/import.
+
+works on mac, linux, windows. no dependencies beyond node and codex.
+
+https://github.com/Spielewoy/multi-codex","clear and concise. big sub, lots of competition."
+5,r/SideProject,multi-codex: sandboxed profiles for openai codex cli,"built this because i have multiple openai accounts and codex only lets you use one at a time. multi-codex creates isolated profiles where each gets its own login, config, sessions, skills, and agent configs.
+
+you create a profile, type its name in the terminal, and codex launches sandboxed in that profile. both can run side by side.
+
+also does shared profiles, templates, profile cloning, export/import, desktop shortcuts, tab completion, and a doctor command that checks your setup.
+
+its a bash script for mac/linux and powershell for windows. nothing else needed.
+
+https://github.com/Spielewoy/multi-codex","humble tone. weekend project energy."
+6,r/coolgithubprojects,multi-codex: run multiple sandboxed codex cli instances,"run multiple openai codex cli instances at the same time with separate accounts, configs, sessions, skills, and agents. each profile is fully isolated.
+
+mac, linux, windows. one bash script, no dependencies.
+
+https://github.com/Spielewoy/multi-codex","keep it super short. this sub is for dropping links."
+7,r/commandline,cli tool for managing isolated openai codex profiles,"codex cli uses ~/.codex/ for everything. if you need multiple accounts running at the same time thats a problem.
+
+multi-codex creates profile directories and sets CODEX_HOME to point at them when launching. each profile gets its own auth, config.toml, sessions, skills, agents, mcp configs, the works. fully sandboxed.
+
+also supports shared profiles that symlink config/skills/agents/prompts/plugins from the system install but keep auth isolated. plus template save/restore, cloning, export/import with tar.gz, tab completion for bash/zsh, and a doctor diagnostic command.
+
+generates shell aliases in $BASE/bin so profile names work as commands. also creates .app bundles on mac and .desktop entries on linux.
+
+https://github.com/Spielewoy/multi-codex
+
+would appreciate feedback on the implementation.","go technical here. they will read your source."
+8,r/bash,bash script for managing multiple codex cli profiles,"wrote a tool in bash that manages sandboxed profiles for openai codex cli. each profile gets its own CODEX_HOME directory so auth, config, sessions, skills, agents, and mcp configs are all isolated.
+
+the core is simple, just redirecting CODEX_HOME. but it grew into a full cli with profile creation (full + shared via symlinks), cloning, renaming, templates (strips auth.json so theyre safe to share), tar.gz export/import, shell alias generation, .app bundle creation on mac, .desktop file generation on linux, bash/zsh tab completion, and a doctor command.
+
+set -euo pipefail, nullglob, validate all profile names against a regex, shell_quote for safe embedding. tried to keep it clean.
+
+theres also a powershell port for windows that mirrors the whole feature set.
+
+https://github.com/Spielewoy/multi-codex
+
+would love feedback from people who actually write good bash.","ask for code review. bash nerds love that. drives comments."
+9,r/opensource,multi-codex: sandboxed profiles for openai codex cli,"open sourced a tool i built to manage multiple codex cli profiles. each profile is fully sandboxed with its own auth, config, sessions, skills, and agents.
+
+the problem is simple: codex cli can only use one account at a time because everything lives in ~/.codex/. this creates separate profile directories and redirects CODEX_HOME.
+
+features: full and shared profiles, templates, cloning, export/import, desktop shortcuts, shell aliases, tab completion, diagnostics.
+
+bash for mac/linux, powershell for windows. no dependencies.
+
+https://github.com/Spielewoy/multi-codex
+
+contributions welcome, especially if anyone wants to help with fish shell completion.","check their self-promo rules first. mention contributions."
+10,r/ClaudeCode,for people here who also use codex cli,"i know some of you use codex alongside claude code. one annoying thing about codex is you can only be logged into one openai account at a time.
+
+i made multi-codex which creates sandboxed profiles. each profile has its own auth, config, sessions, skills, and agents. you type the profile name and it launches. multiple can run at the same time.
+
+figured some of you might find it useful if you juggle multiple openai accounts.
+
+https://github.com/Spielewoy/multi-codex","be chill about it. youre a guest in their community."
+11,r/AI_Agents,run multiple codex cli agents with separate configs,"if you use codex cli for different tasks or clients you might want separate environments for each. multi-codex creates sandboxed profiles where each one gets its own auth, config, sessions, skills, agents, and mcp configs.
+
+you can run them all at the same time. each profile is fully isolated so agents dont share state or credentials.
+
+https://github.com/Spielewoy/multi-codex","frame profiles as agent environments."
+12,r/MacOS,cli tool for running multiple codex instances on mac,"made a tool that creates sandboxed profiles for openai codex cli. each profile gets its own login, config, and sessions so you can run multiple accounts at the same time.
+
+also generates .app shortcuts in ~/Applications for each profile so you can launch from launchpad or spotlight. works on apple silicon and intel.
+
+https://github.com/Spielewoy/multi-codex","lead with mac features. mention .app and apple silicon."
+13,r/linux,multi-codex: sandboxed profiles for openai codex cli,"bash script that creates isolated profile directories for codex cli. each profile gets its own auth, config, sessions, skills, agents, and mcp configs via CODEX_HOME redirection.
+
+generates shell aliases, .desktop files for app menus, and has bash/zsh tab completion.
+
+no dependencies beyond node and codex. just bash.
+
+https://github.com/Spielewoy/multi-codex","mention .desktop files. linux people appreciate that."
+14,r/programming,automated switching between multiple codex accounts,"codex cli stores everything in one folder so switching between openai accounts means logging out and back in every time. automated it with a tool that creates sandboxed profile directories.
+
+each profile gets its own auth, config, sessions, skills, and agents. you type the name and it launches. multiple can run side by side.
+
+its a bash script for unix and powershell for windows. nothing fancy but it works well.
+
+https://github.com/Spielewoy/multi-codex","lead with the problem. this sub is skeptical of promo."
+15,r/ExperiencedDevs,managing multiple codex accounts for client work,"if you do contract work with separate openai accounts per client, codex cli only supports one at a time. i wrote a tool that creates sandboxed profiles so each client gets their own isolated codex environment.
+
+each profile has its own auth, config, sessions, skills, agents, and mcp configs. you just type the profile name to launch. been using it for a few weeks and its removed a lot of friction.
+
+also supports templates so you can save a profile setup and reuse it for new clients.
+
+https://github.com/Spielewoy/multi-codex","professional. no hype. frame as workflow tool."

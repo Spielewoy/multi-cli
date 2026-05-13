@@ -9,7 +9,7 @@
 #   4. On macOS, also downloads an icon for app shortcuts
 #
 # Usage:
-#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ProGambler67/multi-codex/main/install.sh)"
+#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh)"
 #
 # Or just copy the multi-codex script manually:
 #   cp multi-codex /usr/local/bin/ && chmod +x /usr/local/bin/multi-codex
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-REPO="ProGambler67/multi-codex"
+REPO="Spielewoy/multi-codex"
 BRANCH="main"
 RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
