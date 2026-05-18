@@ -1,0 +1,824 @@
+#!/usr/bin/env bash
+# multi-cli -- Run multiple sandboxed profiles of any supported AI CLI or IDE.
+#
+# Adapter-driven launcher: each supported tool ships an adapter.json describing
+# how to find its binary and how to isolate its state. multi-cli reads the
+# adapter and applies one of four isolation strategies: env, userDataDir,
+# redirectHome, or appdata.
+
+set -euo pipefail
+shopt -s nullglob
+
+VERSION="0.1.0"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLS_DIR="$SCRIPT_DIR/tools"
+BASE="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
+
+# =============================================================================
+# Utilities
+# =============================================================================
+
+abort() { echo "Error: $1" >&2; exit 1; }
+
+platform() {
+  local raw="${MULTICLI_PLATFORM:-$(uname -s)}"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    darwin|macos|mac|osx) printf 'darwin\n' ;;
+    linux)                printf 'linux\n' ;;
+    mingw*|msys*|cygwin*) printf 'windows\n' ;;
+    *)                    abort "unsupported platform '$raw'" ;;
+  esac
+}
+
+need_jq() {
+  command -v jq >/dev/null 2>&1 || abort "jq is required but not installed. Install via: brew install jq / apt install jq"
+}
+
+json_str() { jq -r "$1" "$2" 2>/dev/null || echo ""; }
+json_arr() { jq -r "$1 // empty | .[]?" "$2" 2>/dev/null || true; }
+json_obj_keys() { jq -r "$1 // {} | keys[]" "$2" 2>/dev/null || true; }
+json_obj_val() { jq -r "$1[\"$2\"] // empty" "$3" 2>/dev/null || echo ""; }
+
+# =============================================================================
+# Adapter loading
+# =============================================================================
+
+adapter_path() { printf '%s/%s/adapter.json\n' "$TOOLS_DIR" "$1"; }
+
+list_tool_ids() {
+  local d
+  for d in "$TOOLS_DIR"/*/; do
+    [ -f "$d/adapter.json" ] && basename "$d"
+  done
+}
+
+adapter_field() { json_str ".$2" "$(adapter_path "$1")"; }
+
+resolve_path_token() {
+  local p="$1"
+  p="${p//\$HOME/$HOME}"
+  p="${p//\~/$HOME}"
+  printf '%s\n' "$p"
+}
+
+find_adapter_binary() {
+  local tool_id="$1"
+  [ -n "${MULTICLI_OVERRIDE_BINARY:-}" ] && { printf '%s\n' "$MULTICLI_OVERRIDE_BINARY"; return 0; }
+
+  local apath plat key candidates c resolved
+  apath="$(adapter_path "$tool_id")"
+  plat="$(platform)"
+  key=".binary.$plat"
+  candidates="$(jq -r "$key // [] | .[]" "$apath" 2>/dev/null || true)"
+
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    resolved="$(resolve_path_token "$c")"
+    [ -x "$resolved" ] && { printf '%s\n' "$resolved"; return 0; }
+    command -v "$resolved" >/dev/null 2>&1 && { command -v "$resolved"; return 0; }
+  done <<< "$candidates"
+
+  return 1
+}
+
+# =============================================================================
+# Profile addressing
+# =============================================================================
+
+split_profile_spec() {
+  local spec="$1"
+  [ -z "$spec" ] && abort "Profile required: <tool>/<name>"
+  [[ "$spec" == */* ]] || abort "Profile must be in form <tool>/<name>. Got: '$spec'"
+  TOOL="${spec%%/*}"
+  NAME="${spec#*/}"
+}
+
+validate_name() {
+  local name="$1"
+  [ -z "$name" ] && abort "Profile name required"
+  [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]] || abort "Profile name '$name' invalid: must start with alphanumeric, contain only letters/numbers/hyphens"
+}
+
+profile_dir()       { printf '%s/%s/%s\n' "$BASE" "$1" "$2"; }
+tool_profiles_dir() { printf '%s/%s\n' "$BASE" "$1"; }
+alias_dir()         { printf '%s/bin\n' "$BASE"; }
+templates_dir()     { printf '%s/.templates\n' "$BASE"; }
+
+# =============================================================================
+# Profile CRUD
+# =============================================================================
+
+cmd_new() {
+  local spec="$1"; shift
+  local shared=false cli=false from_template=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --shared) shared=true ;;
+      --cli)    cli=true ;;
+      --from)   shift; from_template="${1:-}"; [ -z "$from_template" ] && abort "Usage: --from <template>" ;;
+    esac
+    shift
+  done
+
+  split_profile_spec "$spec"
+  validate_name "$NAME"
+  local apath pdir strategy
+  apath="$(adapter_path "$TOOL")"
+  [ -f "$apath" ] || abort "Unknown tool '$TOOL'. Run: multi-cli tools"
+  pdir="$(profile_dir "$TOOL" "$NAME")"
+  strategy="$(json_str '.isolation.strategy' "$apath")"
+
+  [ -d "$pdir" ] && abort "Profile '$spec' already exists"
+  mkdir -p "$(tool_profiles_dir "$TOOL")"
+
+  if [ -n "$from_template" ]; then
+    local tdir="$(templates_dir)/$from_template"
+    [ -d "$tdir" ] || abort "Template '$from_template' not found"
+    cp -R "$tdir" "$pdir"
+  elif [ "$shared" = true ]; then
+    create_shared_profile "$TOOL" "$pdir"
+  else
+    mkdir -p "$pdir"
+  fi
+
+  if [ "$strategy" = "redirectHome" ]; then
+    local hdir="$pdir/_home"
+    mkdir -p "$hdir"
+    set_redirect_home_links "$TOOL" "$hdir"
+  fi
+
+  [ "$cli" = true ] && touch "$pdir/.cli"
+
+  create_shell_alias "$TOOL" "$NAME"
+  create_shortcut "$TOOL" "$NAME"
+
+  local display
+  display="$(json_str '.displayName' "$apath")"
+  echo "Created profile $spec ($display, strategy=$strategy)"
+  if ! alias_dir_in_path; then
+    echo ""
+    echo "Tip: add $(alias_dir) to PATH to use '$TOOL-$NAME' as a command."
+  fi
+}
+
+create_shared_profile() {
+  local tool="$1" pdir="$2"
+  local apath sys_home entry src dst
+  apath="$(adapter_path "$tool")"
+  mkdir -p "$pdir"
+  touch "$pdir/.shared"
+
+  sys_home="$(json_str '.share.systemHome' "$apath")"
+  [ -z "$sys_home" ] && return
+  sys_home="$(resolve_path_token "$sys_home")"
+  [ -d "$sys_home" ] || return
+
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    src="$sys_home/$entry"
+    dst="$pdir/$entry"
+    if [ -e "$src" ] && [ ! -e "$dst" ]; then
+      ln -s "$src" "$dst" 2>/dev/null || cp -R "$src" "$dst" 2>/dev/null || true
+    fi
+  done < <(json_arr '.share.linkable' "$apath")
+}
+
+set_redirect_home_links() {
+  local tool="$1" hdir="$2"
+  local apath entry src dst
+  apath="$(adapter_path "$tool")"
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    src="$HOME/$entry"
+    dst="$hdir/$entry"
+    if [ -e "$src" ] && [ ! -e "$dst" ]; then
+      ln -s "$src" "$dst" 2>/dev/null || true
+    fi
+  done < <(json_arr '.isolation.shareFromRealHome' "$apath")
+}
+
+cmd_delete() {
+  local spec="$1"
+  split_profile_spec "$spec"
+  validate_name "$NAME"
+  local pdir="$(profile_dir "$TOOL" "$NAME")"
+  [ -d "$pdir" ] || abort "Profile '$spec' does not exist"
+
+  printf "Delete profile '%s' and all its data? [y/N] " "$spec"
+  read -r confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; return; }
+
+  rm -rf "$pdir"
+  remove_shell_alias "$TOOL" "$NAME"
+  remove_shortcut "$TOOL" "$NAME"
+  echo "Deleted profile '$spec'"
+}
+
+cmd_rename() {
+  local old="$1" new="$2"
+  split_profile_spec "$old"; local ot="$TOOL" on="$NAME"
+  split_profile_spec "$new"; local nt="$TOOL" nn="$NAME"
+  [ "$ot" = "$nt" ] || abort "Cannot rename across tools"
+  validate_name "$on"; validate_name "$nn"
+  local odir="$(profile_dir "$ot" "$on")" ndir="$(profile_dir "$nt" "$nn")"
+  [ -d "$odir" ] || abort "Profile '$old' does not exist"
+  [ -d "$ndir" ] && abort "Profile '$new' already exists"
+  mv "$odir" "$ndir"
+  remove_shell_alias "$ot" "$on"; remove_shortcut "$ot" "$on"
+  create_shell_alias "$nt" "$nn"; create_shortcut "$nt" "$nn"
+  echo "Renamed '$old' to '$new'"
+}
+
+cmd_clone() {
+  local src="$1" dest="$2"
+  split_profile_spec "$src"; local st="$TOOL" sn="$NAME"
+  split_profile_spec "$dest"; local dt="$TOOL" dn="$NAME"
+  [ "$st" = "$dt" ] || abort "Cannot clone across tools"
+  validate_name "$sn"; validate_name "$dn"
+  local sdir="$(profile_dir "$st" "$sn")" ddir="$(profile_dir "$dt" "$dn")"
+  [ -d "$sdir" ] || abort "Source profile '$src' does not exist"
+  [ -d "$ddir" ] && abort "Destination profile '$dest' already exists"
+  cp -R "$sdir" "$ddir"
+  create_shell_alias "$dt" "$dn"; create_shortcut "$dt" "$dn"
+  echo "Cloned '$src' to '$dest'"
+}
+
+# =============================================================================
+# Aliases & shortcuts
+# =============================================================================
+
+create_shell_alias() {
+  local tool="$1" name="$2"
+  local adir="$(alias_dir)"
+  mkdir -p "$adir"
+  local apath="$adir/$tool-$name"
+  local launcher="$SCRIPT_DIR/multi-cli"
+  cat > "$apath" <<ALIAS
+#!/usr/bin/env bash
+exec "$(printf '%q' "$launcher")" launch "$(printf '%q' "$tool/$name")" "\$@"
+ALIAS
+  chmod +x "$apath"
+}
+
+remove_shell_alias() {
+  local apath="$(alias_dir)/$1-$2"
+  [ -f "$apath" ] && rm -f "$apath"
+}
+
+alias_dir_in_path() {
+  local d="$(alias_dir)"
+  [[ ":$PATH:" == *":$d:"* ]]
+}
+
+create_shortcut() {
+  local tool="$1" name="$2"
+  case "$(platform)" in
+    darwin) create_shortcut_darwin "$tool" "$name" ;;
+    linux)  create_shortcut_linux "$tool" "$name" ;;
+  esac
+}
+
+remove_shortcut() {
+  local tool="$1" name="$2"
+  case "$(platform)" in
+    darwin)
+      local target="$HOME/Applications/multi-cli $tool $name.app"
+      [ -d "$target" ] && rm -rf "$target"
+      ;;
+    linux)
+      local lp="$HOME/.local/share/multicli/launchers/$tool-$name.sh"
+      [ -f "$lp" ] && rm -f "$lp"
+      local dp="$HOME/.local/share/applications/multicli-$tool-$name.desktop"
+      [ -f "$dp" ] && rm -f "$dp"
+      ;;
+  esac
+}
+
+create_shortcut_darwin() {
+  local tool="$1" name="$2"
+  local app_dir="$HOME/Applications/multi-cli $tool $name.app"
+  local run_script="$app_dir/Contents/MacOS/run"
+  local launcher="$SCRIPT_DIR/multi-cli"
+  local icon_src="$SCRIPT_DIR/icon.icns"
+
+  mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
+
+  cat > "$run_script" <<APPRUN
+#!/usr/bin/env bash
+export MULTICLI_HOME=$(printf '%q' "$BASE")
+exec $(printf '%q' "$launcher") launch $(printf '%q' "$tool/$name") "\$@"
+APPRUN
+  chmod +x "$run_script"
+
+  [ -f "$icon_src" ] && cp "$icon_src" "$app_dir/Contents/Resources/icon.icns"
+
+  cat > "$app_dir/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>run</string>
+  <key>CFBundleIconFile</key>
+  <string>icon</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.multicli.profile.$tool.$name</string>
+  <key>CFBundleName</key>
+  <string>multi-cli $tool $name</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+</dict>
+</plist>
+PLIST
+}
+
+create_shortcut_linux() {
+  local tool="$1" name="$2"
+  local ldir="$HOME/.local/share/multicli/launchers"
+  local lpath="$ldir/$tool-$name.sh"
+  local dpath="$HOME/.local/share/applications/multicli-$tool-$name.desktop"
+  local launcher="$SCRIPT_DIR/multi-cli"
+
+  mkdir -p "$ldir" "$(dirname "$dpath")"
+
+  cat > "$lpath" <<LAUNCHER
+#!/usr/bin/env bash
+export MULTICLI_HOME=$(printf '%q' "$BASE")
+exec $(printf '%q' "$launcher") launch $(printf '%q' "$tool/$name") "\$@"
+LAUNCHER
+  chmod +x "$lpath"
+
+  cat > "$dpath" <<DESKTOP
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=multi-cli $tool $name
+Comment=Launch the $name profile for $tool
+Exec="$lpath" %F
+Terminal=true
+StartupNotify=false
+Categories=Development;
+DESKTOP
+}
+
+# =============================================================================
+# Launch -- strategy dispatch
+# =============================================================================
+
+cmd_launch() {
+  local spec="$1"; shift
+  local binary_args=("$@")
+
+  split_profile_spec "$spec"
+  local apath="$(adapter_path "$TOOL")"
+  [ -f "$apath" ] || abort "Unknown tool '$TOOL'. Run: multi-cli tools"
+
+  local pdir="$(profile_dir "$TOOL" "$NAME")"
+  [ -d "$pdir" ] || abort "Profile '$spec' does not exist. Create with: multi-cli new $spec"
+
+  local binary
+  binary="$(find_adapter_binary "$TOOL")" || {
+    local hint
+    hint="$(json_str '.install' "$apath")"
+    [ -n "$hint" ] && hint=" ($hint)"
+    abort "$(json_str '.displayName' "$apath") binary not found.$hint"
+  }
+
+  local strategy display
+  strategy="$(json_str '.isolation.strategy' "$apath")"
+  display="$(json_str '.displayName' "$apath")"
+  echo "Launching $display profile '$spec' [$strategy]"
+
+  case "$strategy" in
+    env)           launch_env           "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
+    userDataDir)   launch_user_data_dir "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
+    redirectHome)  launch_redirect_home "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
+    appdata)       launch_appdata       "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
+    *)             abort "Unknown isolation strategy '$strategy'" ;;
+  esac
+}
+
+expand_placeholder() {
+  local val="$1" pdir="$2"
+  printf '%s\n' "${val//\{profileDir\}/$pdir}"
+}
+
+launch_env() {
+  local tool="$1" pdir="$2" binary="$3"; shift 3
+  local apath="$(adapter_path "$tool")"
+  local env_cmd=()
+
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    local val
+    val="$(json_obj_val '.isolation.env' "$key" "$apath")"
+    val="$(expand_placeholder "$val" "$pdir")"
+    env_cmd+=("$key=$val")
+  done < <(json_obj_keys '.isolation.env' "$apath")
+
+  env "${env_cmd[@]}" "$binary" "$@"
+}
+
+launch_user_data_dir() {
+  local tool="$1" pdir="$2" binary="$3"; shift 3
+  local apath="$(adapter_path "$tool")"
+  local args=()
+
+  while IFS= read -r a; do
+    [ -z "$a" ] && continue
+    args+=("$(expand_placeholder "$a" "$pdir")")
+  done < <(json_arr '.isolation.args' "$apath")
+
+  "$binary" "${args[@]}" "$@"
+}
+
+launch_redirect_home() {
+  local tool="$1" pdir="$2" binary="$3"; shift 3
+  local hdir="$pdir/_home"
+  mkdir -p "$hdir"
+  set_redirect_home_links "$tool" "$hdir"
+
+  env HOME="$hdir" "$binary" "$@"
+}
+
+launch_appdata() {
+  abort "appdata strategy is Windows-only; use redirectHome on macOS/Linux"
+}
+
+# =============================================================================
+# Listings & diagnostics
+# =============================================================================
+
+folder_size() {
+  local p="$1"
+  [ -d "$p" ] || { echo "0 B"; return; }
+  local bytes
+  if [ "$(platform)" = "darwin" ]; then
+    bytes="$(du -sk "$p" 2>/dev/null | awk '{print $1 * 1024}')" || bytes=0
+  else
+    bytes="$(du -sb "$p" 2>/dev/null | awk '{print $1}')" || bytes=0
+  fi
+  if [ "$bytes" -ge 1073741824 ] 2>/dev/null; then
+    awk "BEGIN{printf \"%.2f GB\", $bytes/1073741824}"
+  elif [ "$bytes" -ge 1048576 ] 2>/dev/null; then
+    awk "BEGIN{printf \"%.2f MB\", $bytes/1048576}"
+  elif [ "$bytes" -ge 1024 ] 2>/dev/null; then
+    awk "BEGIN{printf \"%.2f KB\", $bytes/1024}"
+  else
+    echo "$bytes B"
+  fi
+}
+
+cmd_list() {
+  local tool_filter="${1:-}"
+  [ -d "$BASE" ] || { echo "No profiles yet."; return; }
+
+  local tool_dir
+  for tool_dir in "$BASE"/*/; do
+    [ -d "$tool_dir" ] || continue
+    local tname="$(basename "$tool_dir")"
+    [[ "$tname" == .* ]] && continue
+    [ "$tname" = "bin" ] && continue
+    [ -n "$tool_filter" ] && [ "$tname" != "$tool_filter" ] && continue
+
+    echo ""
+    printf '\033[36m[%s]\033[0m\n' "$tname"
+    local pdir found=false
+    for pdir in "$tool_dir"*/; do
+      [ -d "$pdir" ] || continue
+      found=true
+      local pname="$(basename "$pdir")"
+      local ptype="full"
+      [ -f "$pdir/.cli" ] && ptype="cli"
+      [ -f "$pdir/.shared" ] && ptype="shared"
+      printf "  %-20s %-8s %s\n" "$pname" "$ptype" "$(folder_size "$pdir")"
+    done
+    [ "$found" = false ] && echo "  (none)"
+  done
+}
+
+cmd_tools() {
+  echo "Supported tools:"
+  echo ""
+  printf "  %-18s %-12s %-15s %-10s %s\n" "TOOL" "KIND" "STRATEGY" "STATUS" "INSTALLED"
+  printf "  %-18s %-12s %-15s %-10s %s\n" "----" "----" "--------" "------" "---------"
+
+  local tid
+  for tid in $(list_tool_ids | sort); do
+    local apath="$(adapter_path "$tid")"
+    local kind strategy status installed color
+    kind="$(json_str '.kind' "$apath")"
+    strategy="$(json_str '.isolation.strategy' "$apath")"
+    status="$(json_str '.status' "$apath")"
+    [ -z "$status" ] && status="?"
+    if find_adapter_binary "$tid" >/dev/null 2>&1; then
+      installed="yes"; color="\033[32m"
+    else
+      installed="no"; color="\033[90m"
+    fi
+    printf "  ${color}%-18s %-12s %-15s %-10s %s\033[0m\n" "$tid" "$kind" "$strategy" "$status" "$installed"
+  done
+}
+
+cmd_doctor() {
+  local errors=0 warnings=0
+  echo "multi-cli $VERSION  --  $(platform)"
+  echo ""
+  echo "Profile storage: $BASE"
+
+  if [ -d "$BASE" ]; then
+    if touch "$BASE/.write-test" 2>/dev/null; then
+      rm -f "$BASE/.write-test"
+      printf '  \033[32m[OK] writable\033[0m\n'
+    else
+      printf '  \033[31m[FAIL] not writable\033[0m\n'
+      errors=$((errors + 1))
+    fi
+  else
+    echo "  [INFO] not yet created (will be created on first profile)"
+  fi
+
+  if alias_dir_in_path; then
+    printf 'Alias dir in PATH: \033[32myes\033[0m\n'
+  else
+    printf 'Alias dir in PATH: \033[33mno\033[0m  (%s -- add to PATH for shorthand commands)\n' "$(alias_dir)"
+    warnings=$((warnings + 1))
+  fi
+
+  echo ""
+  echo "Tools:"
+  local tid
+  for tid in $(list_tool_ids | sort); do
+    local bin
+    if bin="$(find_adapter_binary "$tid")"; then
+      printf '  \033[32m[OK]   %s -> %s\033[0m\n' "$tid" "$bin"
+    else
+      local hint
+      hint="$(json_str '.install' "$(adapter_path "$tid")")"
+      [ -n "$hint" ] && hint="  install: $hint"
+      printf '  \033[90m[MISS] %s%s\033[0m\n' "$tid" "$hint"
+    fi
+  done
+
+  echo ""
+  if [ $errors -eq 0 ] && [ $warnings -eq 0 ]; then
+    printf '\033[32mAll good.\033[0m\n'
+  elif [ $errors -eq 0 ]; then
+    printf '\033[33m%d warning(s).\033[0m\n' "$warnings"
+  else
+    printf '\033[31m%d error(s), %d warning(s).\033[0m\n' "$errors" "$warnings"
+  fi
+}
+
+cmd_stats() {
+  [ -d "$BASE" ] || { echo "No profiles yet."; return; }
+  printf "%-30s %s\n" "PROFILE" "SIZE"
+  local td
+  for td in "$BASE"/*/; do
+    [ -d "$td" ] || continue
+    local tname="$(basename "$td")"
+    [[ "$tname" == .* ]] && continue
+    [ "$tname" = "bin" ] && continue
+    local pd
+    for pd in "$td"*/; do
+      [ -d "$pd" ] || continue
+      printf "%-30s %s\n" "$tname/$(basename "$pd")" "$(folder_size "$pd")"
+    done
+  done
+  echo ""
+  echo "Total: $(folder_size "$BASE")"
+}
+
+# =============================================================================
+# Templates / export / import
+# =============================================================================
+
+cmd_template() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    save)
+      local spec="${1:-}" tpl_name="${2:-}"
+      [ -z "$spec" ] || [ -z "$tpl_name" ] && abort "Usage: multi-cli template save <tool>/<profile> <name>"
+      split_profile_spec "$spec"
+      local sdir="$(profile_dir "$TOOL" "$NAME")"
+      [ -d "$sdir" ] || abort "Profile '$spec' does not exist"
+      validate_name "$tpl_name"
+      local tdir="$(templates_dir)"
+      mkdir -p "$tdir"
+      local dest="$tdir/$tpl_name"
+      [ -d "$dest" ] && abort "Template '$tpl_name' already exists"
+      cp -R "$sdir" "$dest"
+      for f in .shared .cli auth.json .credentials.json oauth_creds.json; do
+        [ -e "$dest/$f" ] && rm -rf "$dest/$f"
+      done
+      echo "Saved template '$tpl_name' from '$spec'"
+      ;;
+    list)
+      local tdir="$(templates_dir)"
+      echo "Templates:"
+      if [ ! -d "$tdir" ]; then echo "  (none)"; return; fi
+      local found=false d
+      for d in "$tdir"/*/; do
+        [ -d "$d" ] || continue
+        found=true
+        printf "  %-20s %s\n" "$(basename "$d")" "$(folder_size "$d")"
+      done
+      [ "$found" = false ] && echo "  (none)"
+      ;;
+    delete)
+      local tpl_name="${1:-}"
+      [ -z "$tpl_name" ] && abort "Usage: multi-cli template delete <name>"
+      validate_name "$tpl_name"
+      local dest="$(templates_dir)/$tpl_name"
+      [ -d "$dest" ] || abort "Template '$tpl_name' does not exist"
+      rm -rf "$dest"
+      echo "Deleted template '$tpl_name'"
+      ;;
+    *) abort "Usage: multi-cli template <save|list|delete>" ;;
+  esac
+}
+
+cmd_export() {
+  local spec="${1:-}" out="${2:-}"
+  [ -z "$spec" ] && abort "Usage: multi-cli export <tool>/<name> [path]"
+  split_profile_spec "$spec"
+  local sdir="$(profile_dir "$TOOL" "$NAME")"
+  [ -d "$sdir" ] || abort "Profile '$spec' does not exist"
+  [ -z "$out" ] && out="./$TOOL-$NAME.tar.gz"
+  tar -czf "$out" -C "$(dirname "$sdir")" "$(basename "$sdir")"
+  echo "Exported '$spec' to $out"
+}
+
+cmd_import() {
+  local archive="${1:-}" spec="${2:-}"
+  [ -z "$archive" ] && abort "Usage: multi-cli import <archive> <tool>/<name>"
+  [ -f "$archive" ] || abort "File not found: $archive"
+  [ -z "$spec" ] && abort "Usage: multi-cli import <archive> <tool>/<name>"
+  split_profile_spec "$spec"
+  validate_name "$NAME"
+  [ -f "$(adapter_path "$TOOL")" ] || abort "Unknown tool '$TOOL'"
+  local ddir="$(profile_dir "$TOOL" "$NAME")"
+  [ -d "$ddir" ] && abort "Profile '$spec' already exists"
+  mkdir -p "$(tool_profiles_dir "$TOOL")"
+  mkdir -p "$ddir"
+  tar -xzf "$archive" -C "$ddir" --strip-components=1
+  create_shell_alias "$TOOL" "$NAME"
+  create_shortcut "$TOOL" "$NAME"
+  echo "Imported '$spec'"
+}
+
+# =============================================================================
+# Help / completion
+# =============================================================================
+
+cmd_help() {
+  cat <<HELP
+multi-cli $VERSION -- sandboxed profiles for AI CLIs and agent IDEs
+
+USAGE
+  multi-cli <command> [args]
+
+COMMANDS
+  new <tool>/<name> [--shared] [--cli] [--from <tpl>]   Create a profile
+  launch <tool>/<name> [-- args...]                     Launch the profile
+  list [<tool>]                                         List profiles
+  status                                                Same as list
+  rename <tool>/<old> <tool>/<new>                      Rename
+  delete <tool>/<name>                                  Delete (confirms)
+  clone <tool>/<src> <tool>/<dest>                      Clone
+  template save <tool>/<profile> <name>                 Save as template
+  template list | delete <name>                         Manage templates
+  export <tool>/<name> [path]                           Export to .tar.gz
+  import <archive> <tool>/<name>                        Import from archive
+  tools                                                 List supported tools
+  doctor                                                Diagnose environment
+  stats                                                 Storage usage
+  completion {bash|zsh}                                 Print completion script
+  help | version                                        This / version
+
+PROFILE SHORTHAND
+  multi-cli <tool>/<name> [args...]   -- same as 'launch'
+
+ENVIRONMENT
+  MULTICLI_HOME              Profile storage root (default ~/MultiCliProfiles)
+  MULTICLI_OVERRIDE_BINARY   Override binary discovery for the next launch
+
+EXAMPLES
+  multi-cli new claude-cli/work
+  multi-cli new cursor/personal --shared
+  multi-cli launch codex/acme -- exec --search "fix the build"
+  claude-cli-work          # via auto-generated alias on \$PATH
+
+HELP
+}
+
+cmd_completion() {
+  local shell="${1:-bash}"
+  case "$shell" in
+    bash)
+      cat <<'COMP'
+_multi_cli_completions() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local base="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
+  local script_dir="$(cd "$(dirname "$(command -v multi-cli 2>/dev/null || echo .)")" && pwd)"
+  local tools_dir="$script_dir/tools"
+  local cmds="new launch list status rename delete clone template export import tools doctor stats completion help version"
+  local tools="" specs=""
+  if [ -d "$tools_dir" ]; then
+    for d in "$tools_dir"/*/; do [ -f "$d/adapter.json" ] && tools="$tools $(basename "$d")"; done
+  fi
+  if [ -d "$base" ]; then
+    for td in "$base"/*/; do
+      [ -d "$td" ] || continue
+      local tn="$(basename "$td")"
+      [[ "$tn" == .* ]] && continue; [ "$tn" = "bin" ] && continue
+      for pd in "$td"/*/; do [ -d "$pd" ] && specs="$specs $tn/$(basename "$pd")"; done
+    done
+  fi
+  COMPREPLY=($(compgen -W "$cmds $tools $specs" -- "$cur"))
+}
+complete -F _multi_cli_completions multi-cli
+COMP
+      ;;
+    zsh)
+      cat <<'COMP'
+#compdef multi-cli
+_multi_cli() {
+  local -a cmds tools specs
+  cmds=(new launch list status rename delete clone template export import tools doctor stats completion help version)
+  local base="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
+  local script_dir="$(cd "$(dirname "$(command -v multi-cli 2>/dev/null || echo .)")" && pwd)"
+  local tools_dir="$script_dir/tools"
+  if [ -d "$tools_dir" ]; then
+    for d in "$tools_dir"/*/; do [ -f "$d/adapter.json" ] && tools+=($(basename "$d")); done
+  fi
+  if [ -d "$base" ]; then
+    for td in "$base"/*/; do
+      [ -d "$td" ] || continue
+      local tn="$(basename "$td")"
+      [[ "$tn" == .* ]] && continue; [ "$tn" = "bin" ] && continue
+      for pd in "$td"/*/; do [ -d "$pd" ] && specs+=("$tn/$(basename "$pd")"); done
+    done
+  fi
+  _arguments '1: :->cmd' '*: :->args'
+  case $state in
+    cmd) _describe 'command' cmds -- tools -- specs ;;
+  esac
+}
+_multi_cli "$@"
+COMP
+      ;;
+    *) echo "Supported: bash, zsh" ;;
+  esac
+}
+
+# =============================================================================
+# Main dispatch
+# =============================================================================
+
+need_jq
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  new)        cmd_new "$@" ;;
+  launch)
+    spec="${1:-}"; shift || true
+    launch_args=()
+    saw_delim=false
+    for a in "$@"; do
+      if [ "$saw_delim" = false ] && [ "$a" = "--" ]; then saw_delim=true; continue; fi
+      launch_args+=("$a")
+    done
+    cmd_launch "$spec" "${launch_args[@]+"${launch_args[@]}"}"
+    ;;
+  list)       cmd_list "${1:-}" ;;
+  status)     cmd_list "${1:-}" ;;
+  rename)     cmd_rename "${1:-}" "${2:-}" ;;
+  delete)     cmd_delete "${1:-}" ;;
+  clone)      cmd_clone "${1:-}" "${2:-}" ;;
+  template)   cmd_template "$@" ;;
+  export)     cmd_export "$@" ;;
+  import)     cmd_import "$@" ;;
+  tools)      cmd_tools ;;
+  doctor)     cmd_doctor ;;
+  stats)      cmd_stats ;;
+  completion) cmd_completion "${1:-bash}" ;;
+  help|--help|-h) cmd_help ;;
+  version|--version|-v) echo "multi-cli $VERSION" ;;
+  "")         cmd_help; exit 1 ;;
+  *)
+    if [[ "$cmd" == */* ]]; then
+      cmd_launch "$cmd" "$@"
+    else
+      echo "Unknown command: $cmd"
+      cmd_help
+      exit 1
+    fi
+    ;;
+esac

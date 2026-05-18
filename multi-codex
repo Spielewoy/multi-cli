@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# multi-codex -- backward-compatible shim for multi-cli
+# Delegates to: multi-cli codex <args>
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/multi-cli" codex "$@"

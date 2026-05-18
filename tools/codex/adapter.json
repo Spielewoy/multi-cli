@@ -1,0 +1,22 @@
+{
+  "id": "codex",
+  "displayName": "OpenAI Codex CLI",
+  "kind": "cli",
+  "binary": {
+    "windows": ["%APPDATA%\\npm\\codex.cmd", "%APPDATA%\\npm\\codex", "codex"],
+    "macos":   ["/usr/local/bin/codex", "$HOME/.npm-global/bin/codex", "codex"],
+    "linux":   ["$HOME/.npm-global/bin/codex", "/usr/local/bin/codex", "codex"]
+  },
+  "isolation": {
+    "strategy": "env",
+    "env": { "CODEX_HOME": "{profileDir}" }
+  },
+  "share": {
+    "systemHome":  "$HOME/.codex",
+    "linkable":    ["config.toml", "skills", "agents", "prompts", "mcp-configs", "plugins"],
+    "neverLink":   ["auth.json", "sessions", "history.jsonl"]
+  },
+  "install": "npm i -g @openai/codex",
+  "versionCommand": ["--version"],
+  "status": "stable"
+}

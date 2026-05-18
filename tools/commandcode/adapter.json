@@ -1,0 +1,24 @@
+{
+  "id": "commandcode",
+  "displayName": "Command Code",
+  "kind": "cli",
+  "binary": {
+    "windows": ["%APPDATA%\\npm\\commandcode.cmd", "%APPDATA%\\npm\\commandcode", "commandcode"],
+    "macos":   ["/usr/local/bin/commandcode", "$HOME/.npm-global/bin/commandcode", "commandcode"],
+    "linux":   ["$HOME/.npm-global/bin/commandcode", "commandcode"]
+  },
+  "isolation": {
+    "strategy": "redirectHome",
+    "homeSubdir": ".commandcode",
+    "shareFromRealHome": [".gitconfig", ".ssh", ".npmrc", ".bashrc", ".zshrc"]
+  },
+  "share": {
+    "systemHome":  "$HOME/.commandcode",
+    "linkable":    ["skills", "taste", "plans"],
+    "neverLink":   ["auth.json", "history.jsonl", "projects", "file-history"]
+  },
+  "install": "npm i -g commandcode",
+  "versionCommand": ["--version"],
+  "status": "stable",
+  "notes": "commandcode resolves its config dir from os.homedir() with no override env var, so we redirect HOME/USERPROFILE to a per-profile directory and symlink shared dotfiles back."
+}

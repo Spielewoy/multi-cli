@@ -1,0 +1,38 @@
+{
+  "id": "cursor",
+  "displayName": "Cursor",
+  "kind": "hybrid",
+  "binary": {
+    "windows": [
+      "%LOCALAPPDATA%\\Programs\\cursor\\Cursor.exe",
+      "%LOCALAPPDATA%\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd",
+      "cursor"
+    ],
+    "macos": [
+      "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "$HOME/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "cursor"
+    ],
+    "linux": [
+      "/usr/bin/cursor",
+      "/opt/Cursor/cursor",
+      "$HOME/.local/bin/cursor",
+      "cursor"
+    ]
+  },
+  "isolation": {
+    "strategy": "userDataDir",
+    "args": [
+      "--user-data-dir", "{profileDir}",
+      "--extensions-dir", "{profileDir}/extensions"
+    ]
+  },
+  "share": {
+    "systemHome":  "$HOME/.cursor",
+    "linkable":    ["sandbox.json", "cli-config.json"],
+    "neverLink":   []
+  },
+  "install": "https://cursor.com/download",
+  "versionCommand": ["--version"],
+  "status": "stable"
+}

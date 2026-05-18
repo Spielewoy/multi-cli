@@ -1,0 +1,22 @@
+{
+  "id": "claude-cli",
+  "displayName": "Claude Code",
+  "kind": "cli",
+  "binary": {
+    "windows": ["%APPDATA%\\npm\\claude.cmd", "%APPDATA%\\npm\\claude", "claude"],
+    "macos":   ["/usr/local/bin/claude", "$HOME/.npm-global/bin/claude", "claude"],
+    "linux":   ["$HOME/.npm-global/bin/claude", "claude"]
+  },
+  "isolation": {
+    "strategy": "env",
+    "env": { "CLAUDE_CONFIG_DIR": "{profileDir}" }
+  },
+  "share": {
+    "systemHome":  "$HOME/.claude",
+    "linkable":    ["settings.json", "skills", "agents", "plugins", "commands"],
+    "neverLink":   [".credentials.json", "todos", "projects", "history.jsonl"]
+  },
+  "install": "npm i -g @anthropic-ai/claude-code",
+  "versionCommand": ["--version"],
+  "status": "stable"
+}

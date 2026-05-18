@@ -1,0 +1,36 @@
+{
+  "id": "antigravity",
+  "displayName": "Google Antigravity",
+  "kind": "hybrid",
+  "binary": {
+    "windows": [
+      "%LOCALAPPDATA%\\Programs\\Antigravity\\Antigravity.exe",
+      "antigravity"
+    ],
+    "macos": [
+      "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+      "$HOME/Applications/Antigravity.app/Contents/MacOS/Antigravity"
+    ],
+    "linux": [
+      "/usr/bin/antigravity",
+      "/opt/Antigravity/antigravity",
+      "$HOME/.local/bin/antigravity"
+    ]
+  },
+  "isolation": {
+    "strategy": "userDataDir",
+    "args": [
+      "--user-data-dir", "{profileDir}",
+      "--extensions-dir", "{profileDir}/extensions"
+    ]
+  },
+  "share": {
+    "systemHome":  "$HOME/.antigravity",
+    "linkable":    ["argv.json"],
+    "neverLink":   []
+  },
+  "install": "https://antigravity.google.com/",
+  "versionCommand": ["--version"],
+  "status": "stable",
+  "notes": "Antigravity is built on a VS Code/Electron-style base, so the standard --user-data-dir / --extensions-dir flags isolate auth, settings, and extensions per profile."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "gemini-cli",
+  "displayName": "Gemini CLI",
+  "kind": "cli",
+  "binary": {
+    "windows": ["%APPDATA%\\npm\\gemini.cmd", "%APPDATA%\\npm\\gemini", "gemini"],
+    "macos":   ["/usr/local/bin/gemini", "$HOME/.npm-global/bin/gemini", "gemini"],
+    "linux":   ["$HOME/.npm-global/bin/gemini", "gemini"]
+  },
+  "isolation": {
+    "strategy": "env",
+    "env": { "GEMINI_CLI_HOME": "{profileDir}" }
+  },
+  "share": {
+    "systemHome":  "$HOME/.gemini",
+    "linkable":    ["settings.json", "skills", "GEMINI.md"],
+    "neverLink":   ["oauth_creds.json", "google_accounts.json", "history"]
+  },
+  "install": "npm i -g @google/gemini-cli",
+  "versionCommand": ["--version"],
+  "status": "stable"
+}

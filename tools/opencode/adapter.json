@@ -1,0 +1,25 @@
+{
+  "id": "opencode",
+  "displayName": "OpenCode",
+  "kind": "cli",
+  "binary": {
+    "windows": ["%APPDATA%\\npm\\opencode.cmd", "%APPDATA%\\npm\\opencode", "opencode"],
+    "macos":   ["/usr/local/bin/opencode", "$HOME/.npm-global/bin/opencode", "opencode"],
+    "linux":   ["$HOME/.npm-global/bin/opencode", "opencode"]
+  },
+  "isolation": {
+    "strategy": "env",
+    "env": {
+      "OPENCODE_CONFIG_DIR": "{profileDir}",
+      "OPENCODE_CONFIG":     "{profileDir}/opencode.json"
+    }
+  },
+  "share": {
+    "systemHome":  "$HOME/.config/opencode",
+    "linkable":    ["agents", "commands", "modes", "plugins"],
+    "neverLink":   ["auth.json"]
+  },
+  "install": "npm i -g opencode-ai",
+  "versionCommand": ["--version"],
+  "status": "stable"
+}
