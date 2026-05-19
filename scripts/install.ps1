@@ -18,7 +18,7 @@ Write-Host "multi-cli installer (Windows)"
 Write-Host ""
 
 if ($Local) {
-    $InstallDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    $InstallDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
     Write-Host "Installing from local directory: $InstallDir"
 } else {
     if ($RepoUrl -match '<owner>') {

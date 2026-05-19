@@ -26,15 +26,15 @@ No more logging in and out. Launch as many sandboxed profiles as you need, each 
 
 | Tool | Kind | Isolation | Status |
 |------|------|-----------|--------|
-| [Claude Code](tools/claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | stable |
-| [OpenAI Codex CLI](tools/codex/) | CLI | `env` (`CODEX_HOME`) | stable |
-| [OpenCode](tools/opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | stable |
-| [Gemini CLI](tools/gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | stable |
-| [Command Code](tools/commandcode/) | CLI | `redirectHome` | stable |
-| [Cursor](tools/cursor/) | IDE | `userDataDir` | stable |
-| [Antigravity](tools/antigravity/) | IDE | `userDataDir` | stable |
+| [Claude Code](claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | stable |
+| [OpenAI Codex CLI](codex/) | CLI | `env` (`CODEX_HOME`) | stable |
+| [OpenCode](opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | stable |
+| [Gemini CLI](gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | stable |
+| [Command Code](commandcode/) | CLI | `redirectHome` | stable |
+| [Cursor](cursor/) | IDE | `userDataDir` | stable |
+| [Antigravity](antigravity/) | IDE | `userDataDir` | stable |
 
-Each tool has its own folder under `tools/` with an `adapter.json` describing how isolation works.
+Each tool has its own folder at the repo root with an `adapter.json` describing how isolation works.
 
 ---
 
@@ -43,13 +43,13 @@ Each tool has its own folder under `tools/` with an `adapter.json` describing ho
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install.sh | bash
 ```
 
 **Windows** — open PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install.ps1 | iex
 ```
 
 #### From source
@@ -57,8 +57,8 @@ irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | i
 ```bash
 git clone https://github.com/Spielewoy/multi-codex.git
 cd multi-cli
-./install.sh --local        # macOS/Linux
-.\install.ps1 -Local        # Windows
+./scripts/install.sh --local        # macOS/Linux
+.\scripts\install.ps1 -Local        # Windows
 ```
 
 **Requirement (macOS/Linux):** [jq](https://jqlang.github.io/jq/) must be installed (`brew install jq` / `apt install jq`).
@@ -143,7 +143,7 @@ multi-cli uses four strategies depending on what the tool supports:
 | `redirectHome` | Points `HOME`/`USERPROFILE` at a per-profile dir, symlinks shared dotfiles back | Command Code |
 | `appdata` | Redirects `%APPDATA%` only (Windows) | *(reserved)* |
 
-Each tool's `tools/<id>/adapter.json` declares which strategy to use.
+Each tool's `<id>/adapter.json` declares which strategy to use.
 
 ---
 
@@ -194,13 +194,13 @@ Follow the instructions to add it to your `.zshrc`, `.bashrc`, or PowerShell `$P
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/uninstall.sh | bash
 ```
 
 **Windows**
 
 ```powershell
-irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/uninstall.ps1 | iex
 ```
 
 You'll be asked whether to remove your profile data — nothing is deleted without confirmation.
@@ -233,13 +233,13 @@ You'll be asked whether to remove your profile data — nothing is deleted witho
 
 | 工具 | 类型 | 隔离方式 | 状态 |
 |------|------|----------|------|
-| [Claude Code](tools/claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | 稳定 |
-| [OpenAI Codex CLI](tools/codex/) | CLI | `env` (`CODEX_HOME`) | 稳定 |
-| [OpenCode](tools/opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | 稳定 |
-| [Gemini CLI](tools/gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | 稳定 |
-| [Command Code](tools/commandcode/) | CLI | `redirectHome` | 稳定 |
-| [Cursor](tools/cursor/) | IDE | `userDataDir` | 稳定 |
-| [Antigravity](tools/antigravity/) | IDE | `userDataDir` | 稳定 |
+| [Claude Code](claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | 稳定 |
+| [OpenAI Codex CLI](codex/) | CLI | `env` (`CODEX_HOME`) | 稳定 |
+| [OpenCode](opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | 稳定 |
+| [Gemini CLI](gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | 稳定 |
+| [Command Code](commandcode/) | CLI | `redirectHome` | 稳定 |
+| [Cursor](cursor/) | IDE | `userDataDir` | 稳定 |
+| [Antigravity](antigravity/) | IDE | `userDataDir` | 稳定 |
 
 ---
 
@@ -248,13 +248,13 @@ You'll be asked whether to remove your profile data — nothing is deleted witho
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install.sh | bash
 ```
 
 **Windows** — 打开 PowerShell 运行：
 
 ```powershell
-irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install.ps1 | iex
 ```
 
 #### 从源码安装
@@ -262,8 +262,8 @@ irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | i
 ```bash
 git clone https://github.com/Spielewoy/multi-codex.git
 cd multi-cli
-./install.sh --local        # macOS/Linux
-.\install.ps1 -Local        # Windows
+./scripts/install.sh --local        # macOS/Linux
+.\scripts\install.ps1 -Local        # Windows
 ```
 
 **依赖 (macOS/Linux)：** 需要安装 [jq](https://jqlang.github.io/jq/)（`brew install jq` / `apt install jq`）。
@@ -341,7 +341,7 @@ multi-cli 根据工具支持情况使用四种隔离策略：
 | `redirectHome` | 将 `HOME`/`USERPROFILE` 指向配置文件目录，共享 dotfiles 通过符号链接 | Command Code |
 | `appdata` | 仅重定向 `%APPDATA%`（Windows） | *（保留）* |
 
-每个工具的 `tools/<id>/adapter.json` 声明使用哪种策略。
+每个工具的 `<id>/adapter.json` 声明使用哪种策略。
 
 ---
 
@@ -392,13 +392,13 @@ multi-cli completion bash   # 或 zsh、powershell
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/uninstall.sh | bash
 ```
 
 **Windows**
 
 ```powershell
-irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/uninstall.ps1 | iex
 ```
 
 卸载前会询问是否删除配置文件数据 — 未经确认不会删除任何内容。

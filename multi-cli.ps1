@@ -36,7 +36,7 @@ $ErrorActionPreference = 'Stop'
 $VERSION = '0.1.0'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$ToolsDir  = Join-Path $ScriptDir 'tools'
+$ToolsDir  = $ScriptDir
 $BASE = if ($env:MULTICLI_HOME) { $env:MULTICLI_HOME } else { Join-Path $env:USERPROFILE 'MultiCliProfiles' }
 
 # =============================================================================

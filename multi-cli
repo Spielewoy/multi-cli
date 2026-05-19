@@ -12,7 +12,7 @@ shopt -s nullglob
 VERSION="0.1.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOOLS_DIR="$SCRIPT_DIR/tools"
+TOOLS_DIR="$SCRIPT_DIR"
 BASE="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
 
 # =============================================================================
@@ -302,7 +302,7 @@ create_shortcut_darwin() {
   local app_dir="$HOME/Applications/multi-cli $tool $name.app"
   local run_script="$app_dir/Contents/MacOS/run"
   local launcher="$SCRIPT_DIR/multi-cli"
-  local icon_src="$SCRIPT_DIR/icon.icns"
+  local icon_src="$SCRIPT_DIR/scripts/icon.icns"
 
   mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 
@@ -725,7 +725,7 @@ _multi_cli_completions() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local base="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
   local script_dir="$(cd "$(dirname "$(command -v multi-cli 2>/dev/null || echo .)")" && pwd)"
-  local tools_dir="$script_dir/tools"
+  local tools_dir="$script_dir"
   local cmds="new launch list status rename delete clone template export import tools doctor stats completion help version"
   local tools="" specs=""
   if [ -d "$tools_dir" ]; then
@@ -752,7 +752,7 @@ _multi_cli() {
   cmds=(new launch list status rename delete clone template export import tools doctor stats completion help version)
   local base="${MULTICLI_HOME:-$HOME/MultiCliProfiles}"
   local script_dir="$(cd "$(dirname "$(command -v multi-cli 2>/dev/null || echo .)")" && pwd)"
-  local tools_dir="$script_dir/tools"
+  local tools_dir="$script_dir"
   if [ -d "$tools_dir" ]; then
     for d in "$tools_dir"/*/; do [ -f "$d/adapter.json" ] && tools+=($(basename "$d")); done
   fi

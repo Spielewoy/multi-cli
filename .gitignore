@@ -1,27 +1,5 @@
-# Profiles
-**/MultiCliProfiles/
-**/CodexProfiles/
-
-# redirectHome fake home dirs
-**/_home/
-
-# Smoke test artifacts
-tests/_smoke_*
-
-# Local overrides
-*.local.json
-
-# OS junk
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Editor junk
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
-
-# Node
 node_modules/
+*.swp
+*~

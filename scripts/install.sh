@@ -38,7 +38,7 @@ echo ""
 
 if [ "$local_install" = true ]; then
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  INSTALL_DIR="$SCRIPT_DIR"
+  INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
   echo "Installing from local directory: $INSTALL_DIR"
 else
   if [[ "$REPO_URL" == *"<owner>"* ]]; then
