@@ -1,6 +1,6 @@
 # multi-cli
 
-**Run multiple isolated instances of any AI coding tool — simultaneously.**
+**Run multiple isolated instances of any AI coding tool : simultaneously.**
 
 No more logging in and out. Launch as many sandboxed profiles as you need, each with its own auth, config, sessions, and extensions. Switch between work accounts, client projects, or personal setups instantly.
 
