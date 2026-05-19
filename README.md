@@ -1,32 +1,63 @@
 # multi-cli
 
-Run multiple sandboxed profiles of any supported AI CLI or agent IDE -- simultaneously.
+**Run multiple sandboxed profiles of any AI coding CLI or agent IDE — simultaneously.**
 
-Each profile gets its own auth, config, sessions, and extensions. Switch between work accounts, client projects, or personal setups without logging in and out.
+No more logging in and out. Launch as many profiles as you need, all at once. Each gets its own auth, config, sessions, and extensions.
 
-## Supported tools
+[![GitHub repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/Spielewoy/multi-codex)
+[![GitHub profile](https://img.shields.io/badge/GitHub-Profile-lightgrey?logo=github)](https://github.com/Spielewoy)
+[![GitHub stars](https://img.shields.io/github/stars/Spielewoy/multi-codex?style=social)](https://github.com/Spielewoy/multi-codex/stargazers)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#install)
+[![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
-| Tool | Kind | Isolation | Multi-instance |
-|------|------|-----------|----------------|
-| [Claude Code](tools/claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | yes |
-| [OpenAI Codex CLI](tools/codex/) | CLI | `env` (`CODEX_HOME`) | yes |
-| [OpenCode](tools/opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | yes |
-| [Gemini CLI](tools/gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | yes |
-| [Command Code](tools/commandcode/) | CLI | `redirectHome` | yes |
-| [Cursor](tools/cursor/) | IDE | `userDataDir` | yes |
-| [Antigravity](tools/antigravity/) | IDE | `userDataDir` | yes |
-| [Claude Desktop](tools/claude-desktop/) | Desktop | `redirectHome` | beta |
+---
 
-Each tool has its own folder under `tools/` with an `adapter.json` describing exactly how isolation works and a README with gotchas.
+## Supported Tools
 
-## Quick start
+| Tool | Kind | Isolation | Status |
+|------|------|-----------|--------|
+| [Claude Code](tools/claude-cli/) | CLI | `env` (`CLAUDE_CONFIG_DIR`) | stable |
+| [OpenAI Codex CLI](tools/codex/) | CLI | `env` (`CODEX_HOME`) | stable |
+| [OpenCode](tools/opencode/) | CLI | `env` (`OPENCODE_CONFIG_DIR`) | stable |
+| [Gemini CLI](tools/gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | stable |
+| [Command Code](tools/commandcode/) | CLI | `redirectHome` | stable |
+| [Cursor](tools/cursor/) | IDE | `userDataDir` | stable |
+| [Antigravity](tools/antigravity/) | IDE | `userDataDir` | stable |
 
-### Windows (PowerShell)
+Each tool has its own folder under `tools/` with an `adapter.json` describing how isolation works.
+
+---
+
+## Install
+
+**macOS / Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.sh | bash
+```
+
+**Windows** — open PowerShell and run:
 
 ```powershell
-# Install locally
-.\install.ps1 -Local
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/install.ps1 | iex
+```
 
+### From source
+
+```bash
+git clone https://github.com/Spielewoy/multi-codex.git
+cd multi-codex
+./install.sh --local        # macOS/Linux
+.\install.ps1 -Local        # Windows
+```
+
+**Requirement (macOS/Linux):** [jq](https://jqlang.github.io/jq/) must be installed (`brew install jq` / `apt install jq`).
+
+---
+
+## Quick Start
+
+```bash
 # Create a profile
 multi-cli new claude-cli/work
 
@@ -37,92 +68,61 @@ multi-cli launch claude-cli/work
 multi-cli claude-cli/work
 ```
 
-### macOS / Linux
+Each profile gets an automatic shell alias:
 
-```bash
-# Install locally
-./install.sh --local
+| Platform | Location |
+|----------|----------|
+| macOS / Linux | `~/MultiCliProfiles/bin/` (add to `PATH`) |
+| Windows | Start Menu shortcuts created automatically |
 
-# Create a profile
-multi-cli new claude-cli/work
-
-# Launch it
-multi-cli launch claude-cli/work
-```
-
-**Requirement (macOS/Linux):** [jq](https://jqlang.github.io/jq/) must be installed (`brew install jq` / `apt install jq`).
-
-## Install
-
-### From source (recommended)
-
-```bash
-git clone https://github.com/<owner>/<repo>.git
-cd multi-cli
-./install.sh --local        # macOS/Linux
-# or
-.\install.ps1 -Local        # Windows
-```
-
-### Remote install
-
-```bash
-export MULTICLI_REPO=https://github.com/<owner>/<repo>
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/install.sh | bash
-```
+---
 
 ## Commands
 
-```
-multi-cli new <tool>/<name> [--shared] [--cli] [--from <tpl>]
-multi-cli launch <tool>/<name> [-- args...]
-multi-cli list [<tool>]
-multi-cli status
-multi-cli rename <tool>/<old> <tool>/<new>
-multi-cli delete <tool>/<name>
-multi-cli clone <tool>/<src> <tool>/<dest>
-multi-cli template save <tool>/<profile> <name>
-multi-cli template list
-multi-cli template delete <name>
-multi-cli export <tool>/<name> [path]
-multi-cli import <archive> <tool>/<name>
-multi-cli tools
-multi-cli doctor
-multi-cli stats
-multi-cli completion {bash|zsh|powershell}
-multi-cli help
-multi-cli version
-```
+### Profile Management
 
-### Shorthand
+| Command | Description |
+|---------|-------------|
+| `multi-cli new <tool>/<name>` | Create a new isolated profile |
+| `multi-cli new <tool>/<name> --shared` | Create a lightweight profile (shared settings, isolated auth) |
+| `multi-cli new <tool>/<name> --from <tpl>` | Create from a saved template |
+| `multi-cli <tool>/<name>` | Launch a profile (shorthand) |
+| `multi-cli launch <tool>/<name>` | Launch a profile |
+| `multi-cli list [<tool>]` | List all profiles |
+| `multi-cli status` | Show running state, type, last used, and size |
+| `multi-cli clone <tool>/<src> <tool>/<dest>` | Copy an existing profile |
+| `multi-cli rename <tool>/<old> <tool>/<new>` | Rename a profile |
+| `multi-cli delete <tool>/<name>` | Delete a profile and all its data |
 
-```bash
-multi-cli claude-cli/work          # same as: multi-cli launch claude-cli/work
-multi-cli codex/acme -- --version  # pass flags to the underlying binary
-```
+### Templates
 
-### Auto-generated aliases
+| Command | Description |
+|---------|-------------|
+| `multi-cli template save <tool>/<profile> <name>` | Save a profile as a reusable template |
+| `multi-cli template list` | List saved templates |
+| `multi-cli template delete <name>` | Remove a template |
 
-When you create a profile, a shell alias is placed in `~/MultiCliProfiles/bin/`. Add that to your `PATH` and you get direct commands:
+### Backup & Transfer
 
-```bash
-claude-cli-work       # launches claude-cli/work profile
-codex-acme            # launches codex/acme profile
-cursor-personal       # launches cursor/personal profile
-```
+| Command | Description |
+|---------|-------------|
+| `multi-cli export <tool>/<name> [path]` | Archive a profile to `.tar.gz` (`.zip` on Windows) |
+| `multi-cli import <archive> <tool>/<name>` | Restore a profile from an archive |
 
-On Windows, Start Menu shortcuts are also created automatically.
+### Utilities
 
-## Profile types
+| Command | Description |
+|---------|-------------|
+| `multi-cli tools` | List all supported tools and their install status |
+| `multi-cli stats` | Show disk usage per profile |
+| `multi-cli doctor` | Diagnose your environment |
+| `multi-cli completion {bash\|zsh\|powershell}` | Set up shell tab-completion |
+| `multi-cli help` | Show help |
+| `multi-cli version` | Show version |
 
-| Flag | Meaning |
-|------|---------|
-| *(none)* | **Full** -- completely isolated. Fresh auth, fresh config. |
-| `--shared` | **Shared** -- symlinks settings/skills/plugins from your main install. Auth stays isolated. |
-| `--cli` | **CLI** -- marks the profile for terminal-only launch (skips GUI discovery). |
-| `--from <tpl>` | Clone from a saved template. |
+---
 
-## How isolation works
+## How Isolation Works
 
 multi-cli uses four strategies depending on what the tool supports:
 
@@ -130,12 +130,25 @@ multi-cli uses four strategies depending on what the tool supports:
 |----------|-------------|---------|
 | `env` | Sets a config-dir environment variable before launch | Claude Code, Codex, OpenCode, Gemini CLI |
 | `userDataDir` | Passes `--user-data-dir` and `--extensions-dir` flags | Cursor, Antigravity |
-| `redirectHome` | Points `HOME`/`USERPROFILE` at a per-profile dir, symlinks shared dotfiles back | Command Code, Claude Desktop |
+| `redirectHome` | Points `HOME`/`USERPROFILE` at a per-profile dir, symlinks shared dotfiles back | Command Code |
 | `appdata` | Redirects `%APPDATA%` only (Windows) | *(reserved)* |
 
 Each tool's `tools/<id>/adapter.json` declares which strategy to use. The launcher reads the adapter and applies it automatically.
 
-## Environment variables
+---
+
+## Profile Types
+
+| Flag | Meaning |
+|------|---------|
+| *(none)* | **Full** — completely isolated. Fresh auth, fresh config. |
+| `--shared` | **Shared** — symlinks settings/extensions from your main install. Auth stays isolated. |
+| `--cli` | **CLI** — marks the profile for terminal-only launch (skips GUI discovery). |
+| `--from <tpl>` | Clone from a saved template. |
+
+---
+
+## Environment Variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -144,46 +157,64 @@ Each tool's `tools/<id>/adapter.json` declares which strategy to use. The launch
 | `MULTICLI_REPO` | *(unset)* | Git URL for remote install |
 | `MULTICLI_PLATFORM` | *(auto)* | Override platform detection (`darwin`, `linux`) |
 
+---
+
 ## Diagnostics
 
 ```bash
 multi-cli doctor
 ```
 
-Checks:
-- Profile storage directory exists and is writable
-- Alias directory is in PATH
-- Each supported tool's binary is detected (or shows install hint)
+Checks that your profile storage exists, alias directory is in PATH, and each tool's binary is detected (or shows an install hint).
 
-## Backward compatibility
+---
 
-If you used the original `multi-codex` tool, the `multi-codex` / `multi-codex.ps1` shims still work. They delegate to `multi-cli codex <args>`.
+## Shell Completion
+
+Enable tab-completion for commands and profile names:
+
+```bash
+multi-cli completion bash   # or zsh, powershell
+```
+
+Follow the instructions to add it to your `.zshrc`, `.bashrc`, or PowerShell `$PROFILE`.
+
+---
+
+## Backward Compatibility
+
+If you used the original `multi-codex` tool, the legacy shims still work:
 
 ```bash
 multi-codex new work        # same as: multi-cli new codex/work
-multi-codex work             # same as: multi-cli launch codex/work
+multi-codex work            # same as: multi-cli launch codex/work
 ```
 
-## Testing
-
-Real launch smoke tests verify that each tool's isolation actually works -- profiles are created, binaries are launched with `--version`, and we confirm that config files land in the profile directory, not the system home.
-
-```powershell
-# Windows
-.\tests\smoke.ps1
-
-# macOS/Linux
-./tests/smoke.sh
-```
+---
 
 ## Uninstall
 
+**macOS / Linux**
+
 ```bash
-./uninstall.sh          # macOS/Linux
-.\uninstall.ps1         # Windows
+curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.sh | bash
 ```
 
-Prompts before removing profiles. Your profile data at `~/MultiCliProfiles` is never deleted without confirmation.
+**Windows**
+
+```powershell
+irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/uninstall.ps1 | iex
+```
+
+You'll be asked whether to remove your profile data — nothing is deleted without confirmation.
+
+---
+
+## Credits
+
+- **Creator** — [Spielewoy](https://github.com/Spielewoy)
+
+---
 
 ## License
 

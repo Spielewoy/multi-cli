@@ -3,8 +3,8 @@
   multi-cli.ps1 -- Run multiple sandboxed profiles of any supported AI CLI or IDE.
 
 .DESCRIPTION
-  Adapter-driven launcher: each supported tool (codex, claude-cli, claude-desktop,
-  cursor, antigravity, opencode, commandcode, gemini-cli) ships an adapter.json
+  Adapter-driven launcher: each supported tool (codex, claude-cli, cursor,
+  antigravity, opencode, commandcode, gemini-cli) ships an adapter.json
   describing how to find its binary and how to isolate its state. multi-cli reads
   the adapter and applies one of four isolation strategies: env, userDataDir,
   redirectHome, or appdata.
