@@ -12,7 +12,7 @@ $ProfileDir = if ($env:MULTICLI_HOME)        { $env:MULTICLI_HOME }        else 
 Write-Host "multi-cli uninstaller (Windows)"
 Write-Host ""
 
-foreach ($cmd in @('multi-cli.cmd', 'multi-codex.cmd')) {
+foreach ($cmd in @('multi-cli.cmd')) {
     $p = Join-Path $BinDir $cmd
     if (Test-Path $p) { Remove-Item -Force $p; Write-Host "Removed $p" }
 }

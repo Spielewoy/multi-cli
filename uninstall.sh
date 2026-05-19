@@ -13,7 +13,6 @@ if [ -L "$BIN_LINK" ]; then
   rm -f "$BIN_LINK"
   echo "Removed symlink: $BIN_LINK"
 fi
-rm -f "$(dirname "$BIN_LINK")/multi-codex" 2>/dev/null || true
 
 if [ -d "$INSTALL_DIR" ] && [ "$INSTALL_DIR" != "$(pwd)" ]; then
   printf "Remove install directory %s? [y/N] " "$INSTALL_DIR"

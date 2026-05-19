@@ -57,11 +57,9 @@ else
 fi
 
 chmod +x "$INSTALL_DIR/multi-cli"
-chmod +x "$INSTALL_DIR/multi-codex" 2>/dev/null || true
 
 mkdir -p "$(dirname "$BIN_LINK")"
 ln -sf "$INSTALL_DIR/multi-cli" "$BIN_LINK"
-ln -sf "$INSTALL_DIR/multi-codex" "$(dirname "$BIN_LINK")/multi-codex" 2>/dev/null || true
 
 echo ""
 echo "Installed multi-cli to $INSTALL_DIR"
