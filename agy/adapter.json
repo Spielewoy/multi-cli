@@ -1,0 +1,34 @@
+{
+  "id": "agy",
+  "displayName": "Antigravity CLI",
+  "kind": "cli",
+  "binary": {
+    "windows": [
+      "%LOCALAPPDATA%\\agy\\bin\\agy.exe",
+      "agy"
+    ],
+    "macos": [
+      "/usr/local/bin/agy",
+      "$HOME/.local/bin/agy",
+      "agy"
+    ],
+    "linux": [
+      "$HOME/.local/bin/agy",
+      "/usr/local/bin/agy",
+      "agy"
+    ]
+  },
+  "isolation": {
+    "strategy": "redirectHome",
+    "shareFromRealHome": [".gitconfig", ".ssh", ".npmrc"]
+  },
+  "share": {
+    "systemHome": "$HOME/.agy",
+    "linkable": ["plugins"],
+    "neverLink": ["auth.json", "conversations"]
+  },
+  "install": "https://antigravity.google.com/",
+  "versionCommand": ["--version"],
+  "status": "stable",
+  "notes": "agy is the CLI companion to Antigravity 2.0. It has no config dir override, so we redirect HOME/USERPROFILE to a per-profile directory and symlink shared dotfiles back."
+}

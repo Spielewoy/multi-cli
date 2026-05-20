@@ -18,19 +18,16 @@
     ]
   },
   "isolation": {
-    "strategy": "userDataDir",
-    "args": [
-      "--user-data-dir", "{profileDir}",
-      "--extensions-dir", "{profileDir}/extensions"
-    ]
+    "strategy": "appdata",
+    "appdataSubdir": "Antigravity"
   },
   "share": {
-    "systemHome":  "$HOME/.antigravity",
-    "linkable":    ["argv.json"],
-    "neverLink":   []
+    "systemHome": "$HOME/.antigravity",
+    "linkable": ["argv.json"],
+    "neverLink": []
   },
   "install": "https://antigravity.google.com/",
   "versionCommand": ["--version"],
-  "status": "stable",
-  "notes": "Antigravity is built on a VS Code/Electron-style base, so the standard --user-data-dir / --extensions-dir flags isolate auth, settings, and extensions per profile."
+  "status": "beta",
+  "notes": "Antigravity 2.0 stores state under %APPDATA%\\Antigravity (Windows). The appdata strategy redirects %APPDATA% to a per-profile directory. Note: Antigravity 2.0's internal language_server may use absolute registry-derived paths, so full isolation is under investigation. For complete isolation today, use agy (the companion CLI) which uses redirectHome."
 }
