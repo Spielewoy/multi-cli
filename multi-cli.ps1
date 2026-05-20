@@ -264,8 +264,7 @@ function New-AliasScript {
     $aliasDir = Get-AliasDir
     New-Item -ItemType Directory -Force -Path $aliasDir | Out-Null
     $aliasPath = Join-Path $aliasDir "$Tool-$Name.cmd"
-    $scriptPath = $MyInvocation.MyCommand.Definition
-    if (-not $scriptPath) { $scriptPath = $PSCommandPath }
+    $scriptPath = $PSCommandPath
 @"
 @echo off
 powershell.exe -ExecutionPolicy Bypass -File "$scriptPath" launch $Tool/$Name %*
