@@ -1,6 +1,6 @@
 {
-  "id": "agy",
-  "displayName": "Antigravity CLI",
+  "id": "agy-cli",
+  "displayName": "AGY-CLI (Antigravity-CLI)",
   "kind": "cli",
   "binary": {
     "windows": [
@@ -30,5 +30,5 @@
   "install": "https://antigravity.google.com/",
   "versionCommand": ["--version"],
   "status": "stable",
-  "notes": "agy is the CLI companion to Antigravity 2.0. It has no config dir override, so we redirect HOME/USERPROFILE to a per-profile directory and symlink shared dotfiles back."
+  "notes": "AGY-CLI (Antigravity-CLI) is the CLI companion to Antigravity 2.0. It has no config dir override, so we redirect HOME/USERPROFILE to a per-profile directory and symlink shared dotfiles back."
 }

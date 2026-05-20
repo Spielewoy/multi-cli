@@ -6,7 +6,7 @@
 #
 # Usage:
 #   ./tests/smoke.sh                # all detected tools
-#   ./tests/smoke.sh agy antigravity # specific tools
+#   ./tests/smoke.sh agy-cli antigravity # specific tools
 #   KEEP_PROFILES=1 ./tests/smoke.sh # don't clean up (debug)
 
 set -euo pipefail

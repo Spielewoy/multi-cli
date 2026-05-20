@@ -4,11 +4,11 @@
 
 Antigravity 2.0 is an Electron-based IDE that stores everything (auth, settings, session state) under `%APPDATA%\Antigravity` on Windows, `~/Library/Application Support/Antigravity` on macOS, and `~/.config/Antigravity` on Linux. The `appdata` strategy overrides the environment variable so each profile gets its own user data directory.
 
-**For CLI workflows**, use the companion `agy` adapter (`multi-cli new agy/work`) which provides full terminal-based isolation via `redirectHome`.
+**For CLI workflows**, use the companion AGY-CLI adapter (`multi-cli new agy-cli/work`) which provides full terminal-based isolation via `redirectHome`.
 
 ## Install
 
-[antigravity.google.com](https://antigravity.google.com/) — download the Antigravity 2.0 installer which includes both the Antigravity IDE and the `agy` CLI.
+[antigravity.google.com](https://antigravity.google.com/) — download the Antigravity 2.0 installer which includes both the Antigravity IDE and AGY-CLI (Antigravity-CLI).
 
 ## Quickstart
 
@@ -41,4 +41,4 @@ antigravity-personal   # separate window, different account
 
 - Binary detection verified on Windows with Antigravity 2.0.1 installed at `%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe`.
 - Full profile isolation effectiveness under active investigation for Antigravity 2.0.
-- `agy` CLI isolation fully verified via redirectHome strategy (see `agy/`).
+- AGY-CLI isolation fully verified via redirectHome strategy (see `agy-cli/`).
