@@ -150,8 +150,15 @@ function New-Profile {
 
     Write-Host "Created profile $Spec ($($adapter.displayName), strategy=$($adapter.isolation.strategy))"
     if (-not (Test-AliasDirInPath)) {
-        Write-Host ""
-        Write-Host "Tip: add $(Get-AliasDir) to PATH to use '$($p.Tool)-$($p.Name)' as a command."
+        $aliasDir = Get-AliasDir
+        $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+        if ($userPath -notlike "*$aliasDir*") {
+            [Environment]::SetEnvironmentVariable('PATH', "$aliasDir;$userPath", 'User')
+            $env:PATH = "$aliasDir;$env:PATH"
+            Write-Host "Added $aliasDir to user PATH. Restart your terminal to use '$($p.Tool)-$($p.Name)' as a command."
+        } else {
+            Write-Host "$aliasDir is already in PATH."
+        }
     }
 }
 

@@ -67,5 +67,17 @@ if ($userPath -notlike "*$BinDir*") {
     Write-Host "$BinDir is already in PATH."
 }
 
+$ProfilesBinDir = if ($env:MULTICLI_HOME) { Join-Path $env:MULTICLI_HOME 'bin' } else { Join-Path $env:USERPROFILE 'MultiCliProfiles\bin' }
+$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+if ($userPath -notlike "*$ProfilesBinDir*") {
+    Write-Host ""
+    Write-Host "Adding $ProfilesBinDir to user PATH ..."
+    [Environment]::SetEnvironmentVariable('PATH', "$ProfilesBinDir;$userPath", 'User')
+    $env:PATH = "$ProfilesBinDir;$env:PATH"
+    Write-Host "Done. Profile aliases will be available after terminal restart."
+} else {
+    Write-Host "$ProfilesBinDir is already in PATH."
+}
+
 Write-Host ""
 Write-Host "Run 'multi-cli doctor' to verify your setup."
