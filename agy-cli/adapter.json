@@ -19,16 +19,16 @@
     ]
   },
   "isolation": {
-    "strategy": "redirectHome",
-    "shareFromRealHome": [".gitconfig", ".ssh", ".npmrc"]
+    "strategy": "sandboxUser",
+    "args": []
   },
   "share": {
     "systemHome": "$HOME/.agy",
-    "linkable": ["plugins"],
-    "neverLink": ["auth.json", "conversations"]
+    "linkable": [],
+    "neverLink": ["auth.json", "conversations", "credentials", "sessions", "plugins", "oauth_creds.json", ".credentials.json"]
   },
   "install": "https://antigravity.google.com/",
   "versionCommand": ["--version"],
   "status": "stable",
-  "notes": "AGY-CLI (Antigravity-CLI) is the CLI companion to Antigravity 2.0. It has no config dir override, so we redirect HOME/USERPROFILE to a per-profile directory and symlink shared dotfiles back."
+  "notes": "AGY-CLI uses redirectHome with full TEMP/TMP isolation. Nothing is shared between profiles except .gitconfig and .ssh (for git operations). All auth, conversations, credentials, and sessions are profile-specific. The redirectHome strategy sets HOME/USERPROFILE/APPDATA/LOCALAPPDATA/TEMP/TMP to profile-specific directories."
 }

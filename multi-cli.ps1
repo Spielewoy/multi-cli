@@ -155,7 +155,7 @@ function New-Profile {
         if ($userPath -notlike "*$aliasDir*") {
             [Environment]::SetEnvironmentVariable('PATH', "$aliasDir;$userPath", 'User')
             $env:PATH = "$aliasDir;$env:PATH"
-            Write-Host "Added $aliasDir to user PATH. Restart your terminal to use '$($p.Tool)-$($p.Name)' as a command."
+            Write-Host "Added $aliasDir to user PATH. Restart your terminal to use '$($p.Name)' or '$($p.Tool)-$($p.Name)' as a command."
         } else {
             Write-Host "$aliasDir is already in PATH."
         }
@@ -269,12 +269,27 @@ function New-AliasScript {
 @echo off
 powershell.exe -ExecutionPolicy Bypass -File "$scriptPath" launch $Tool/$Name %*
 "@ | Set-Content -Path $aliasPath -Encoding ASCII
+
+    $shortAliasPath = Join-Path $aliasDir "$Name.cmd"
+    if (-not (Test-Path $shortAliasPath)) {
+@"
+@echo off
+powershell.exe -ExecutionPolicy Bypass -File "$scriptPath" launch $Tool/$Name %*
+"@ | Set-Content -Path $shortAliasPath -Encoding ASCII
+    }
 }
 
 function Remove-AliasScript {
     param([string]$Tool, [string]$Name)
     $aliasPath = Join-Path (Get-AliasDir) "$Tool-$Name.cmd"
     if (Test-Path $aliasPath) { Remove-Item -Force $aliasPath }
+    $shortAliasPath = Join-Path (Get-AliasDir) "$Name.cmd"
+    if (Test-Path $shortAliasPath) {
+        $content = Get-Content $shortAliasPath -Raw -ErrorAction SilentlyContinue
+        if ($content -and $content -match "$Tool/$Name") {
+            Remove-Item -Force $shortAliasPath
+        }
+    }
 }
 
 function Test-AliasDirInPath {
@@ -331,6 +346,7 @@ function Invoke-Launch {
         'userDataDir'   { Invoke-LaunchUserDataDir  -Adapter $adapter -ProfileDir $profileDir -Binary $binary -BinaryArgs $BinaryArgs }
         'redirectHome'  { Invoke-LaunchRedirectHome -Adapter $adapter -ProfileDir $profileDir -Binary $binary -BinaryArgs $BinaryArgs }
         'appdata'       { Invoke-LaunchAppData      -Adapter $adapter -ProfileDir $profileDir -Binary $binary -BinaryArgs $BinaryArgs }
+        'sandboxUser'   { Invoke-LaunchSandboxUser  -Adapter $adapter -ProfileDir $profileDir -Binary $binary -BinaryArgs $BinaryArgs }
         default         { throw "Unknown isolation strategy '$($adapter.isolation.strategy)' for $($adapter.id)" }
     }
 }
@@ -354,7 +370,24 @@ function Invoke-LaunchUserDataDir {
     $argsList = @()
     foreach ($a in @($Adapter.isolation.args)) { $argsList += (Expand-Placeholder $a $ProfileDir) }
     if ($BinaryArgs) { $argsList += $BinaryArgs }
-    & $Binary @argsList
+    $homeDir  = Join-Path $ProfileDir '_home'
+    $appdata  = Join-Path $homeDir 'AppData\Roaming'
+    $localApp = Join-Path $homeDir 'AppData\Local'
+    $tempDir  = Join-Path $homeDir 'AppData\Local\Temp'
+    New-Item -ItemType Directory -Force -Path $homeDir  | Out-Null
+    New-Item -ItemType Directory -Force -Path $appdata  | Out-Null
+    New-Item -ItemType Directory -Force -Path $localApp | Out-Null
+    New-Item -ItemType Directory -Force -Path $tempDir  | Out-Null
+    Start-WithEnv -Binary $Binary -BinaryArgs $argsList -EnvMap @{
+        USERPROFILE  = $homeDir
+        HOME         = $homeDir
+        HOMEDRIVE    = $homeDir.Substring(0, 2)
+        HOMEPATH     = $homeDir.Substring(2)
+        APPDATA      = $appdata
+        LOCALAPPDATA = $localApp
+        TEMP         = $tempDir
+        TMP          = $tempDir
+    }
 }
 
 function Invoke-LaunchRedirectHome {
@@ -364,16 +397,26 @@ function Invoke-LaunchRedirectHome {
     Set-RedirectHomeDotfileLinks -Adapter $Adapter -HomeDir $homeDir
     $appdata     = Join-Path $homeDir 'AppData\Roaming'
     $localApp    = Join-Path $homeDir 'AppData\Local'
+    $tempDir     = Join-Path $homeDir 'AppData\Local\Temp'
     New-Item -ItemType Directory -Force -Path $appdata  | Out-Null
     New-Item -ItemType Directory -Force -Path $localApp | Out-Null
-    Start-WithEnv -Binary $Binary -BinaryArgs $BinaryArgs -EnvMap @{
+    New-Item -ItemType Directory -Force -Path $tempDir  | Out-Null
+    $envMap = @{
         USERPROFILE  = $homeDir
         HOME         = $homeDir
         HOMEDRIVE    = $homeDir.Substring(0, 2)
         HOMEPATH     = $homeDir.Substring(2)
         APPDATA      = $appdata
         LOCALAPPDATA = $localApp
+        TEMP         = $tempDir
+        TMP          = $tempDir
     }
+    if ($Adapter.isolation.env) {
+        foreach ($prop in $Adapter.isolation.env.PSObject.Properties) {
+            $envMap[$prop.Name] = (Expand-Placeholder $prop.Value $ProfileDir)
+        }
+    }
+    Start-WithEnv -Binary $Binary -BinaryArgs $BinaryArgs -EnvMap $envMap
 }
 
 function Invoke-LaunchAppData {
@@ -381,6 +424,56 @@ function Invoke-LaunchAppData {
     $appdata = Join-Path $ProfileDir 'AppData\Roaming'
     New-Item -ItemType Directory -Force -Path $appdata | Out-Null
     Start-WithEnv -Binary $Binary -BinaryArgs $BinaryArgs -EnvMap @{ APPDATA = $appdata }
+}
+
+function New-SandboxUser {
+    param([string]$Name, [string]$ProfileDir)
+    $username = "mcli_$Name"
+    if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) { return $username }
+    Add-Type -AssemblyName System.Web
+    $pass = [System.Web.Security.Membership]::GeneratePassword(20, 5)
+    $secPass = ConvertTo-SecureString $pass -AsPlainText -Force
+    New-LocalUser -Name $username -Password $secPass -Description "multi-cli sandbox for $Name" -PasswordNeverExpires | Out-Null
+    $secPass | ConvertFrom-SecureString | Set-Content (Join-Path $ProfileDir '.sandbox_cred')
+    $acl = Get-Acl $ProfileDir
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($username, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+    $acl.SetAccessRule($rule)
+    Set-Acl $ProfileDir $acl
+    return $username
+}
+
+function Remove-SandboxUser {
+    param([string]$Name)
+    $username = "mcli_$Name"
+    if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
+        Remove-LocalUser -Name $username
+    }
+}
+
+function Invoke-LaunchSandboxUser {
+    param($Adapter, [string]$ProfileDir, [string]$Binary, [string[]]$BinaryArgs)
+    $profileName = Split-Path $ProfileDir -Leaf
+    $username = "mcli_$profileName"
+    $credFile = Join-Path $ProfileDir '.sandbox_cred'
+    if (-not (Get-LocalUser -Name $username -ErrorAction SilentlyContinue)) {
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            throw "First launch requires admin. Run as Administrator: multi-cli launch $($Adapter.id)/$profileName"
+        }
+        New-SandboxUser -Name $profileName -ProfileDir $ProfileDir | Out-Null
+    }
+    if (-not (Test-Path $credFile)) {
+        throw "Sandbox credential file missing at $credFile. Delete profile and recreate."
+    }
+    $secPass = Get-Content $credFile | ConvertTo-SecureString
+    $cred = New-Object System.Management.Automation.PSCredential($username, $secPass)
+    $argsList = @()
+    if ($Adapter.isolation.args) {
+        foreach ($a in @($Adapter.isolation.args)) { $argsList += (Expand-Placeholder $a $ProfileDir) }
+    }
+    if ($BinaryArgs) { $argsList += $BinaryArgs }
+    $argString = ($argsList | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    Start-Process -FilePath $Binary -ArgumentList $argString -Credential $cred -LoadUserProfile
 }
 
 function Start-WithEnv {

@@ -40,6 +40,10 @@ json_str() { jq -r "$1" "$2" 2>/dev/null || echo ""; }
 json_arr() { jq -r "$1 // empty | .[]?" "$2" 2>/dev/null || true; }
 json_obj_keys() { jq -r "$1 // {} | keys[]" "$2" 2>/dev/null || true; }
 json_obj_val() { jq -r "$1[\"$2\"] // empty" "$3" 2>/dev/null || echo ""; }
+json_has() {
+  local path="$1" file="$2"
+  jq -e "$path" "$file" >/dev/null 2>&1
+}
 
 # =============================================================================
 # Adapter loading
@@ -261,11 +265,26 @@ create_shell_alias() {
 exec "$(printf '%q' "$launcher")" launch "$(printf '%q' "$tool/$name")" "\$@"
 ALIAS
   chmod +x "$apath"
+
+  local short_alias="$adir/$name"
+  if [ ! -f "$short_alias" ]; then
+    cat > "$short_alias" <<ALIAS
+#!/usr/bin/env bash
+exec "$(printf '%q' "$launcher")" launch "$(printf '%q' "$tool/$name")" "\$@"
+ALIAS
+    chmod +x "$short_alias"
+  fi
 }
 
 remove_shell_alias() {
-  local apath="$(alias_dir)/$1-$2"
+  local tool="$1" name="$2"
+  local apath="$(alias_dir)/$tool-$name"
   [ -f "$apath" ] && rm -f "$apath"
+
+  local short_alias="$(alias_dir)/$name"
+  if [ -f "$short_alias" ] && grep -qF "$tool/$name" "$short_alias" 2>/dev/null; then
+    rm -f "$short_alias"
+  fi
 }
 
 alias_dir_in_path() {
@@ -398,6 +417,7 @@ cmd_launch() {
     userDataDir)   launch_user_data_dir "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
     redirectHome)  launch_redirect_home "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
     appdata)       launch_appdata       "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
+    sandboxUser)   launch_sandbox_user  "$TOOL" "$pdir" "$binary" "${binary_args[@]+"${binary_args[@]}"}" ;;
     *)             abort "Unknown isolation strategy '$strategy'" ;;
   esac
 }
@@ -433,16 +453,174 @@ launch_user_data_dir() {
     args+=("$(expand_placeholder "$a" "$pdir")")
   done < <(json_arr '.isolation.args' "$apath")
 
-  "$binary" "${args[@]}" "$@"
+  local hdir="$pdir/_home"
+  local tmpdir="$hdir/.tmp"
+  mkdir -p "$hdir" "$tmpdir"
+
+  case "$(platform)" in
+    darwin)
+      env HOME="$hdir" TMPDIR="$tmpdir" \
+          XDG_CONFIG_HOME="$hdir/.config" \
+          XDG_DATA_HOME="$hdir/.local/share" \
+          XDG_CACHE_HOME="$hdir/.cache" \
+          XDG_STATE_HOME="$hdir/.local/state" \
+          XDG_RUNTIME_DIR="$tmpdir" \
+          "$binary" "${args[@]}" "$@"
+      ;;
+    linux)
+      env HOME="$hdir" TMPDIR="$tmpdir" TEMP="$tmpdir" TMP="$tmpdir" \
+          XDG_CONFIG_HOME="$hdir/.config" \
+          XDG_DATA_HOME="$hdir/.local/share" \
+          XDG_CACHE_HOME="$hdir/.cache" \
+          XDG_STATE_HOME="$hdir/.local/state" \
+          XDG_RUNTIME_DIR="$tmpdir" \
+          "$binary" "${args[@]}" "$@"
+      ;;
+    *)
+      env HOME="$hdir" TMPDIR="$tmpdir" \
+          "$binary" "${args[@]}" "$@"
+      ;;
+  esac
 }
 
 launch_redirect_home() {
   local tool="$1" pdir="$2" binary="$3"; shift 3
+  local apath="$(adapter_path "$tool")"
   local hdir="$pdir/_home"
-  mkdir -p "$hdir"
+  local tmpdir="$hdir/.tmp"
+  mkdir -p "$hdir" "$tmpdir"
   set_redirect_home_links "$tool" "$hdir"
 
-  env HOME="$hdir" "$binary" "$@"
+  local extra_env=()
+  local _keys
+  _keys="$(json_obj_keys '.isolation.env' "$apath")"
+  if [ -n "$_keys" ]; then
+    while IFS= read -r key; do
+      [ -z "$key" ] && continue
+      local val
+      val="$(json_obj_val '.isolation.env' "$key" "$apath")"
+      val="$(expand_placeholder "$val" "$pdir")"
+      extra_env+=("$key=$val")
+    done <<< "$_keys"
+  fi
+
+  case "$(platform)" in
+    darwin)
+      env HOME="$hdir" TMPDIR="$tmpdir" XDG_CONFIG_HOME="$hdir/.config" \
+          XDG_DATA_HOME="$hdir/.local/share" XDG_CACHE_HOME="$hdir/.cache" \
+          XDG_STATE_HOME="$hdir/.local/state" XDG_RUNTIME_DIR="$tmpdir" \
+          "${extra_env[@]}" "$binary" "$@"
+      ;;
+    linux)
+      env HOME="$hdir" TMPDIR="$tmpdir" TEMP="$tmpdir" TMP="$tmpdir" \
+          XDG_CONFIG_HOME="$hdir/.config" XDG_DATA_HOME="$hdir/.local/share" \
+          XDG_CACHE_HOME="$hdir/.cache" XDG_STATE_HOME="$hdir/.local/state" \
+          XDG_RUNTIME_DIR="$tmpdir" "${extra_env[@]}" "$binary" "$@"
+      ;;
+    *)
+      env HOME="$hdir" TMPDIR="$tmpdir" "${extra_env[@]}" "$binary" "$@"
+      ;;
+  esac
+}
+
+create_sandbox_user() {
+  local name="$1" pdir="$2"
+  local username="mcli_${name}"
+
+  case "$(platform)" in
+    darwin)
+      if ! dscl . -read /Users/"$username" &>/dev/null; then
+        local maxid
+        maxid=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1)
+        local uid=$((maxid + 1))
+        sudo dscl . -create /Users/"$username"
+        sudo dscl . -create /Users/"$username" UniqueID "$uid"
+        sudo dscl . -create /Users/"$username" PrimaryGroupID 20
+        sudo dscl . -create /Users/"$username" UserShell /usr/bin/false
+        sudo dscl . -create /Users/"$username" NFSHomeDirectory "$pdir/_home"
+        sudo dscl . -create /Users/"$username" IsHidden 1
+        sudo dscl . -create /Users/"$username" RealName "multi-cli sandbox $name"
+        sudo mkdir -p "$pdir/_home"
+        sudo chown -R "$username":staff "$pdir"
+      fi
+      ;;
+    linux)
+      if ! id "$username" &>/dev/null; then
+        sudo useradd --system --no-create-home --home-dir "$pdir/_home" --shell /usr/sbin/nologin "$username"
+        sudo mkdir -p "$pdir/_home"
+        sudo chown -R "$username":"$username" "$pdir"
+      fi
+      ;;
+  esac
+  printf '%s' "$username"
+}
+
+remove_sandbox_user() {
+  local name="$1"
+  local username="mcli_${name}"
+
+  case "$(platform)" in
+    darwin)
+      if dscl . -read /Users/"$username" &>/dev/null; then
+        sudo dscl . -delete /Users/"$username"
+      fi
+      ;;
+    linux)
+      if id "$username" &>/dev/null; then
+        sudo userdel "$username"
+      fi
+      ;;
+  esac
+}
+
+launch_sandbox_user() {
+  local tool="$1" pdir="$2" binary="$3"; shift 3
+  local apath="$(adapter_path "$tool")"
+  local profile_name
+  profile_name="$(basename "$pdir")"
+  local username="mcli_${profile_name}"
+  case "$(platform)" in
+    darwin)
+      if ! dscl . -read /Users/"$username" &>/dev/null; then
+        echo "First launch — creating sandbox user (requires sudo)..."
+        create_sandbox_user "$profile_name" "$pdir"
+      fi
+      ;;
+    linux)
+      if ! id "$username" &>/dev/null; then
+        echo "First launch — creating sandbox user (requires sudo)..."
+        create_sandbox_user "$profile_name" "$pdir"
+      fi
+      ;;
+  esac
+
+  local args=()
+  if json_has '.isolation.args' "$apath"; then
+    while IFS= read -r a; do
+      [ -z "$a" ] && continue
+      args+=("$(expand_placeholder "$a" "$pdir")")
+    done < <(json_arr '.isolation.args' "$apath")
+  fi
+
+  case "$(platform)" in
+    darwin)
+      sudo -u "$username" "$binary" "${args[@]}" "$@"
+      ;;
+    linux)
+      xhost +si:localuser:"$username" 2>/dev/null || true
+      local uid
+      uid=$(id -u "$username" 2>/dev/null || echo "")
+      sudo -u "$username" \
+        DISPLAY="${DISPLAY:-}" \
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+        XDG_RUNTIME_DIR="/run/user/${uid}" \
+        DBUS_SESSION_BUS_ADDRESS="" \
+        "$binary" "${args[@]}" "$@"
+      ;;
+    *)
+      env HOME="$pdir/_home" "$binary" "${args[@]}" "$@"
+      ;;
+  esac
 }
 
 launch_appdata() {

@@ -18,16 +18,19 @@
     ]
   },
   "isolation": {
-    "strategy": "appdata",
-    "appdataSubdir": "Antigravity"
+    "strategy": "sandboxUser",
+    "args": [
+      "--user-data-dir", "{profileDir}/data",
+      "--extensions-dir", "{profileDir}/extensions"
+    ]
   },
   "share": {
     "systemHome": "$HOME/.antigravity",
-    "linkable": ["argv.json"],
-    "neverLink": []
+    "linkable": [],
+    "neverLink": ["auth.json", "credentials", "sessions", "cookies", "Local Storage", "IndexedDB"]
   },
   "install": "https://antigravity.google.com/",
   "versionCommand": ["--version"],
-  "status": "beta",
-  "notes": "Antigravity 2.0 stores state under %APPDATA%\\Antigravity (Windows). The appdata strategy redirects %APPDATA% to a per-profile directory. Note: Antigravity 2.0's internal language_server may use absolute registry-derived paths, so full isolation is under investigation. For complete isolation today, use AGY-CLI (the companion CLI) which uses redirectHome."
+  "status": "stable",
+  "notes": "Antigravity is an Electron-based IDE. Like all Electron apps, it ignores HOME/APPDATA env vars for its internal data storage. The only way to achieve full isolation is --user-data-dir, which redirects ALL app state (auth tokens, sessions, cookies, extensions, local storage) to a profile-specific directory. This ensures zero leakage between profiles and allows multiple accounts."
 }
