@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Adapter-driven launcher: each supported tool (codex, claude-cli, cursor,
-  antigravity, agy-cli, opencode, commandcode, gemini-cli) ships an adapter.json
+  opencode, commandcode, gemini-cli) ships an adapter.json
   describing how to find its binary and how to isolate its state. multi-cli reads
   the adapter and applies one of four isolation strategies: env, userDataDir,
   redirectHome, or appdata.
@@ -473,7 +473,13 @@ function Invoke-LaunchSandboxUser {
     }
     if ($BinaryArgs) { $argsList += $BinaryArgs }
     $argString = ($argsList | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
-    Start-Process -FilePath $Binary -ArgumentList $argString -Credential $cred -LoadUserProfile
+    $spParams = @{
+        FilePath        = $Binary
+        Credential      = $cred
+        LoadUserProfile = $true
+    }
+    if ($argString) { $spParams['ArgumentList'] = $argString }
+    Start-Process @spParams
 }
 
 function Start-WithEnv {

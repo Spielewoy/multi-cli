@@ -32,8 +32,8 @@ No more logging in and out. Launch as many sandboxed profiles as you need, each 
 | [Gemini CLI](gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | stable |
 | [Command Code](commandcode/) | CLI | `redirectHome` | stable |
 | [Cursor](cursor/) | IDE | `userDataDir` | stable |
-| [Antigravity](antigravity/) | IDE | `sandboxUser` | stable |
-| [AGY-CLI](agy-cli/) | CLI | `sandboxUser` | stable |
+| Antigravity | IDE | `sandboxUser` | archived (requires admin, see `archive/`) |
+| AGY-CLI | CLI | `sandboxUser` | archived (requires admin, see `archive/`) |
 
 Each tool has its own folder at the repo root with an `adapter.json` describing how isolation works.
 
@@ -147,7 +147,7 @@ multi-cli uses five isolation strategies depending on what the tool supports:
 | `userDataDir` | Passes `--user-data-dir` and `--extensions-dir` flags | Cursor |
 | `redirectHome` | Points `HOME`/`USERPROFILE` at a per-profile dir, symlinks shared dotfiles back | Command Code |
 | `appdata` | Redirects `%APPDATA%` only (Windows) | *(available but unused)* |
-| `sandboxUser` | Creates a dedicated OS user per profile for complete credential/keychain isolation | Antigravity, AGY-CLI |
+| `sandboxUser` | Creates a dedicated OS user per profile for complete credential/keychain isolation | *(available but unused)* |
 
 Each tool's `<id>/adapter.json` declares which strategy to use.
 
@@ -245,8 +245,8 @@ You'll be asked whether to remove your profile data — nothing is deleted witho
 | [Gemini CLI](gemini-cli/) | CLI | `env` (`GEMINI_CLI_HOME`) | 稳定 |
 | [Command Code](commandcode/) | CLI | `redirectHome` | 稳定 |
 | [Cursor](cursor/) | IDE | `userDataDir` | 稳定 |
-| [Antigravity](antigravity/) | IDE | `sandboxUser` | 稳定 |
-| [AGY-CLI](agy-cli/) | CLI | `sandboxUser` | 稳定 |
+| Antigravity | IDE | `sandboxUser` | 已归档（需要管理员权限，见 `archive/`） |
+| AGY-CLI | CLI | `sandboxUser` | 已归档（需要管理员权限，见 `archive/`） |
 
 ---
 
@@ -351,7 +351,7 @@ multi-cli 根据工具支持情况使用五种隔离策略：
 | `userDataDir` | 传递 `--user-data-dir` 和 `--extensions-dir` 参数 | Cursor |
 | `redirectHome` | 将 `HOME`/`USERPROFILE` 指向配置文件目录，共享 dotfiles 通过符号链接 | Command Code |
 | `appdata` | 仅重定向 `%APPDATA%`（Windows） | *（可用但未使用）* |
-| `sandboxUser` | 为每个配置文件创建专用操作系统用户，实现完全的凭证/钥匙串隔离 | Antigravity, AGY-CLI |
+| `sandboxUser` | 为每个配置文件创建专用操作系统用户，实现完全的凭证/钥匙串隔离 | *（可用但未使用）* |
 
 每个工具的 `<id>/adapter.json` 声明使用哪种策略。
 
