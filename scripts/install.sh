@@ -2,7 +2,7 @@
 # install.sh -- Install multi-cli for macOS/Linux
 set -euo pipefail
 
-REPO_URL="${MULTICLI_REPO:-https://github.com/<owner>/<repo>}"
+REPO_URL="${MULTICLI_REPO:-https://github.com/Spielewoy/multi-codex.git}"
 INSTALL_DIR="${MULTICLI_INSTALL_DIR:-$HOME/.local/share/multi-cli}"
 BIN_LINK="${MULTICLI_BIN_LINK:-$HOME/.local/bin/multi-cli}"
 
@@ -41,9 +41,9 @@ if [ "$local_install" = true ]; then
   INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
   echo "Installing from local directory: $INSTALL_DIR"
 else
-  if [[ "$REPO_URL" == *"<owner>"* ]]; then
-    echo "Error: MULTICLI_REPO is not set. Set it to the git clone URL." >&2
-    echo "  export MULTICLI_REPO=https://github.com/youruser/multi-cli" >&2
+  if [[ "$REPO_URL" == *"<owner>"* ]] || [[ "$REPO_URL" == *"<repo>"* ]]; then
+    echo "Error: MULTICLI_REPO contains a placeholder. Set it to the actual git clone URL." >&2
+    echo "  export MULTICLI_REPO=https://github.com/Spielewoy/multi-codex.git" >&2
     exit 1
   fi
   echo "Cloning from $REPO_URL ..."
