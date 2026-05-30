@@ -294,6 +294,13 @@ multi-cli launch claude-cli/work
 multi-cli claude-cli/work
 ```
 
+每个配置文件都会获得一个自动 shell 别名：
+
+| 平台 | 位置 |
+|------|------|
+| macOS / Linux | `~/MultiCliProfiles/bin/`（添加到 `PATH`） |
+| Windows | 自动创建开始菜单快捷方式 |
+
 ---
 
 ### 命令
@@ -385,7 +392,7 @@ multi-cli 根据工具支持情况使用五种隔离策略：
 multi-cli doctor
 ```
 
-检查配置文件存储是否存在、别名目录是否在 PATH 中、以及每个工具的二进制文件是否被检测到。
+检查配置文件存储是否存在、别名目录是否在 PATH 中、以及每个工具的二进制文件是否被检测到（或显示安装提示）。
 
 ---
 
