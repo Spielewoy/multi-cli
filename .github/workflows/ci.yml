@@ -98,7 +98,9 @@ jobs:
             'scripts/uninstall.ps1',
             'multi-cli.ps1'
           )
-          $findings = Invoke-ScriptAnalyzer -Path $targets -Severity Error
+          $findings = foreach ($target in $targets) {
+            Invoke-ScriptAnalyzer -Path $target -Severity Error
+          }
           if ($findings) {
             $findings | Format-Table -AutoSize | Out-String | Write-Host
             throw "PSScriptAnalyzer reported $($findings.Count) error-severity finding(s)."
