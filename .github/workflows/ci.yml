@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The important one: prove that a clean machine can install multi-cli from
+  # scratch and immediately run its core commands. This is the check that would
+  # have caught the install failure (missing jq / broken launcher).
+  install-smoke:
+    name: install + run (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Force the installer's own jq-resolution path: both runner images ship
+      # jq pre-installed, so we remove it first. The installer must put jq back
+      # (apt-get on Linux, brew on macOS) or the whole CLI is dead on arrival.
+      - name: Remove pre-installed jq so the installer must provide it
+        run: |
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get remove -y jq || true
+          elif command -v brew >/dev/null 2>&1; then
+            brew uninstall --ignore-dependencies --force jq || true
+          fi
+          hash -r
+          if command -v jq >/dev/null 2>&1; then
+            echo "WARNING: jq still present at $(command -v jq); installer will detect-and-skip."
+          else
+            echo "jq removed; installer must reinstall it."
+          fi
+
+      - name: Install multi-cli from the working tree
+        run: bash scripts/install.sh --local
+
+      - name: jq is available after install
+        run: |
+          command -v jq
+          jq --version
+
+      # The launcher lands in ~/.local/bin (see install.sh BIN_LINK default).
+      - name: doctor / tools / new must all exit 0
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          multi-cli doctor
+          multi-cli tools
+          multi-cli new codex/ciprofile
+
+  # Shell correctness for every .sh and the main launcher. Run at error
+  # severity: the current tree has only style-level warnings (SC2155 "declare
+  # and assign separately" x24, SC2115 x1 in `multi-cli`) and zero errors, so
+  # error severity keeps CI green while still failing on real bugs (parse
+  # errors, undefined behavior, CRLF/SC1017, bad redirects, etc.).
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -y && sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts
+        run: shellcheck --severity=error multi-cli scripts/install.sh scripts/uninstall.sh
+
+  # PowerShell static analysis for the Windows scripts. Run at Error severity:
+  # the warning-level rules (e.g. PSAvoidUsingConvertToSecureStringWithPlainText
+  # in multi-cli.ps1, PSUseShouldProcessForStateChangingFunctions) are expected
+  # design choices, not bugs, so Error severity keeps CI green while still
+  # catching genuine parse/syntax failures.
+  pwsh-lint:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Analyze PowerShell scripts
+        shell: pwsh
+        run: |
+          $targets = @(
+            'scripts/install.ps1',
+            'scripts/uninstall.ps1',
+            'multi-cli.ps1'
+          )
+          $findings = Invoke-ScriptAnalyzer -Path $targets -Severity Error
+          if ($findings) {
+            $findings | Format-Table -AutoSize | Out-String | Write-Host
+            throw "PSScriptAnalyzer reported $($findings.Count) error-severity finding(s)."
+          }
+          Write-Host "No error-severity findings."

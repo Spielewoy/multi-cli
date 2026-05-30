@@ -59,14 +59,14 @@ irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install
 
 ```bash
 git clone https://github.com/Spielewoy/multi-codex.git
-cd multi-cli
+cd multi-codex
 ./scripts/install.sh --local        # macOS/Linux
 .\scripts\install.ps1 -Local        # Windows
 ```
 
 > After install, **restart your terminal** for PATH changes to take effect.
 
-**Requirement (macOS/Linux):** [jq](https://jqlang.github.io/jq/) must be installed (`brew install jq` / `apt install jq`).
+> [jq](https://jqlang.github.io/jq/) is **installed automatically** by the installer on all platforms — no manual setup required.
 
 ---
 
@@ -264,20 +264,20 @@ curl -fsSL https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/
 irm https://raw.githubusercontent.com/Spielewoy/multi-codex/main/scripts/install.ps1 | iex
 ```
 
-> After install, **restart your terminal** for PATH changes to take effect.
+> 安装后，**请重启终端** 以使 PATH 更改生效。
 
 #### 从源码安装
 
 ```bash
 git clone https://github.com/Spielewoy/multi-codex.git
-cd multi-cli
+cd multi-codex
 ./scripts/install.sh --local        # macOS/Linux
 .\scripts\install.ps1 -Local        # Windows
 ```
 
-> After install, **restart your terminal** for PATH changes to take effect.
+> 安装后，**请重启终端** 以使 PATH 更改生效。
 
-**依赖 (macOS/Linux)：** 需要安装 [jq](https://jqlang.github.io/jq/)（`brew install jq` / `apt install jq`）。
+> 安装程序会在所有平台上**自动安装** [jq](https://jqlang.github.io/jq/) — 无需手动设置。
 
 ---
 

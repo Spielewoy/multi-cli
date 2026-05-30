@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repo, auto-detect text vs binary.
+* text=auto
+
+# Shell scripts must be LF so the shebang and shellcheck work on Linux/macOS CI.
+*.sh text eol=lf
+
+# The extensionless launcher is a bash script -- force LF.
+multi-cli text eol=lf
+
+# PowerShell stays CRLF (Windows-native).
+*.ps1 text eol=crlf
+
+# Sensible text defaults.
+*.json text
+*.md   text
+
+# Binary assets -- never touch line endings.
+*.icns binary
