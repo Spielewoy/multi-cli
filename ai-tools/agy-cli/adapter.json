@@ -19,7 +19,7 @@
   },
   "isolation": {
     "strategy": "accountOverlay",
-    "mode": "foreground",
+    "mode": "detached",
     "env": {},
     "clearEnv": []
   },

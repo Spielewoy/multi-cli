@@ -228,7 +228,7 @@ function New-OsUserPassword {
 
 function New-OsUserAccount {
     param([string]$Username, [string]$Password, [string]$Tool)
-    $output = Invoke-OsUserNative -FilePath net.exe -NativeArgs @('user', $Username, $Password, '/add', '/expires:never', '/passwordchg:no')
+    $output = Invoke-OsUserNative -FilePath net.exe -NativeArgs @('user', $Username, $Password, '/add', '/expires:never', '/passwordchg:no', '/y')
     if ($LASTEXITCODE -ne 0) { throw "Failed to create OS user '$Username': $output" }
     # net user /add assigns the default local Users membership. Avoid passing
     # the localized group name to net localgroup on non-English Windows.
@@ -242,6 +242,20 @@ function Grant-OsUserAccess {
     param([string]$Path, [string]$Username)
     $output = Invoke-OsUserNative -FilePath icacls.exe -NativeArgs @($Path, '/grant', "${Username}:(OI)(CI)M", '/T')
     if ($LASTEXITCODE -ne 0) { throw "Failed to grant OS user '$Username' access to '$Path': $output" }
+}
+
+# Grant the sandbox user Read & Execute on the binary directory when located
+# in the operator's private user profile (e.g. %LOCALAPPDATA%).
+function Grant-OsUserBinaryAccess {
+    param([string]$BinaryPath, [string]$Username)
+    if (-not $BinaryPath) { return }
+    try {
+        $resolved = [System.IO.Path]::GetFullPath($BinaryPath)
+        if ($resolved.StartsWith($env:USERPROFILE, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $parentDir = Split-Path -Parent $resolved
+            $null = Invoke-OsUserNative -FilePath icacls.exe -NativeArgs @($parentDir, '/grant', "${Username}:(OI)(CI)RX", '/T')
+        }
+    } catch {}
 }
 
 # Provision the sandbox user for a profile. Idempotent: an existing user is
@@ -691,13 +705,24 @@ function Start-OsUserInteractiveProcess {
         [string[]]$BinaryArgs
     )
     $credential = New-OsUserCredential -Username $Username -CredentialTarget $CredentialTarget
+    $startProcessCommand = Get-Command Start-Process -ErrorAction SilentlyContinue
+    if ($Binary -ne $env:ComSpec -and $startProcessCommand -and $startProcessCommand.CommandType -eq [Management.Automation.CommandTypes]::Cmdlet) {
+        $argString = if ($null -ne $BinaryArgs -and $BinaryArgs.Length -gt 0) {
+            ($BinaryArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+        } else { '' }
+        $startCmd = if ($argString) { "start `"`" `"$Binary`" $argString" } else { "start `"`" `"$Binary`"" }
+        $currentDir = (Get-Location).Path
+        $workingDir = if ($currentDir -and (Test-Path -LiteralPath $currentDir)) { $currentDir } else { Split-Path -Parent $Binary }
+        $process = Microsoft.PowerShell.Management\Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', $startCmd) -Credential $credential -LoadUserProfile -WorkingDirectory $workingDir -WindowStyle Hidden -PassThru
+        return [bool]$process
+    }
     $parameters = @{
         FilePath = $Binary
         Credential = $credential
         LoadUserProfile = $true
         PassThru = $true
     }
-    if (@($BinaryArgs).Count -gt 0) { $parameters.ArgumentList = @($BinaryArgs) }
+    if ($null -ne $BinaryArgs -and $BinaryArgs.Length -gt 0) { $parameters.ArgumentList = @($BinaryArgs) }
     $process = Start-Process @parameters
     return [bool]$process
 }
@@ -724,6 +749,7 @@ function Invoke-OsUserLaunch {
         }
     }
     $plan = Get-OsUserLaunchPlan -Adapter $Adapter -ProfileDir $ProfileDir -Binary $Binary -BinaryArgs $BinaryArgs -SandboxHome $SandboxHome
+    Grant-OsUserBinaryAccess -BinaryPath $Binary -Username $username
     if ($plan.Mode -eq 'detached') {
         if (-not (Start-OsUserInteractiveProcess -Username $username -CredentialTarget $plan.CredentialTarget -Binary $Binary -BinaryArgs $BinaryArgs)) {
             throw "OS-user launch of '$Binary' did not start."

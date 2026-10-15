@@ -641,7 +641,7 @@ Describe 'native account and ACL orchestration' {
             return @($script:NativeCalls)
         }
         @($calls).Count | Should Be 2
-        $calls[0] | Should Be 'net.exe|user|mcli_test000000|Secret-123|/add|/expires:never|/passwordchg:no'
+        $calls[0] | Should Be 'net.exe|user|mcli_test000000|Secret-123|/add|/expires:never|/passwordchg:no|/y'
         $calls[1] | Should Be 'net.exe|user|mcli_test000000|/comment:multi-cli owned sandbox user for fixture'
     }
 

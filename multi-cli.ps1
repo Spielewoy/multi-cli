@@ -108,7 +108,7 @@ function Get-Adapter {
 }
 
 # Expand the path tokens adapters use for per-OS roots: $HOME and %VARS%.
-function Resolve-PathToken {
+function global:Resolve-PathToken {
     param([string]$Path)
     if (-not $Path) { return $Path }
     $expanded = $Path -replace '\$HOME', $env:USERPROFILE.Replace('\', '\\')
